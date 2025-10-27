@@ -22,7 +22,7 @@ class Notification extends React.Component {
   }
 }
 
-// TopNav component
+// TopNav component (removed Sign Out)
 class TopNav extends React.Component {
   render() {
     return React.createElement('nav', {
@@ -30,48 +30,79 @@ class TopNav extends React.Component {
     },
       React.createElement('div', { className: 'text-lg font-bold' }, 'Survey Dashboard'),
       React.createElement('div', null,
-        React.createElement('span', { className: 'mr-4' }, 'Welcome, ' + this.props.currentUserName),
-        React.createElement('button', {
-          className: 'bg-red-500 hover:bg-red-600 px-3 py-1 rounded',
-          onClick: function() { window.location.href = '/_layouts/15/SignOut.aspx'; }
-        }, 'Sign Out')
+        React.createElement('span', { className: 'mr-4' }, 'Welcome, ' + this.props.currentUserName)
       )
     );
   }
 }
 
-// SideNav component with updated page names
+// SideNav component with filters and responsive collapse
 class SideNav extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { isOpen: true };
+    this.state = {
+      isOpen: false, // Closed by default on mobile
+      searchTerm: '',
+      selectedFilter: 'All' // All, Published, Draft, Upcoming, Running
+    };
   }
   render() {
+    var _this = this;
     return React.createElement('div', {
-      className: 'bg-gray-200 w-64 p-4 h-screen ' + (this.state.isOpen ? '' : 'hidden')
+      className: 'bg-gray-200 w-64 h-screen fixed md:static md:block ' + (this.state.isOpen ? 'block' : 'hidden')
     },
       React.createElement('button', {
-        className: 'mb-4 bg-blue-500 text-white px-2 py-1 rounded',
-        onClick: () => this.setState({ isOpen: !this.state.isOpen })
+        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2',
+        onClick: function() { _this.setState({ isOpen: !_this.state.isOpen }); }
       }, this.state.isOpen ? 'Collapse' : 'Expand'),
-      React.createElement('ul', { className: 'space-y-2' },
-        React.createElement('li', null,
-          React.createElement('a', {
-            href: '/formfiller',
-            className: 'block p-2 hover:bg-blue-100 rounded'
-          }, 'Form Filler')
+      React.createElement('div', { className: 'p-4' },
+        // Search filter
+        React.createElement('div', { className: 'mb-4' },
+          React.createElement('input', {
+            type: 'text',
+            placeholder: 'Search surveys...',
+            value: this.state.searchTerm,
+            onChange: function(e) {
+              _this.setState({ searchTerm: e.target.value });
+              _this.props.onFilter({ searchTerm: e.target.value, status: _this.state.selectedFilter });
+            },
+            className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
+            'aria-label': 'Search surveys'
+          })
         ),
-        React.createElement('li', null,
-          React.createElement('a', {
-            href: '/builder',
-            className: 'block p-2 hover:bg-blue-100 rounded'
-          }, 'Builder')
-        ),
-        React.createElement('li', null,
-          React.createElement('a', {
-            href: '/response',
-            className: 'block p-2 hover:bg-blue-100 rounded'
-          }, 'Response')
+        // Status filters
+        React.createElement('ul', { className: 'space-y-2' },
+          ['All', 'Published', 'Draft', 'Upcoming', 'Running'].map(function(filter) {
+            return React.createElement('li', { key: filter },
+              React.createElement('button', {
+                className: 'w-full text-left p-2 hover:bg-blue-100 rounded ' +
+                  (_this.state.selectedFilter === filter ? 'bg-blue-100 font-semibold' : ''),
+                onClick: function() {
+                  _this.setState({ selectedFilter: filter });
+                  _this.props.onFilter({ searchTerm: _this.state.searchTerm, status: filter });
+                }
+              }, filter)
+            );
+          }),
+          // Navigation links
+          React.createElement('li', { className: 'mt-4 border-t pt-2' },
+            React.createElement('a', {
+              href: '/formfiller',
+              className: 'block p-2 hover:bg-blue-100 rounded'
+            }, 'formfiller')
+          ),
+          React.createElement('li', null,
+            React.createElement('a', {
+              href: '/builder',
+              className: 'block p-2 hover:bg-blue-100 rounded'
+            }, 'builder')
+          ),
+          React.createElement('li', null,
+            React.createElement('a', {
+              href: '/response',
+              className: 'block p-2 hover:bg-blue-100 rounded'
+            }, 'response')
+          )
         )
       )
     );
@@ -612,8 +643,8 @@ class EditModal extends React.Component {
 class FormFillerComponent extends React.Component {
   render() {
     return React.createElement('div', { className: 'p-4' },
-      React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Filler'),
-      React.createElement('p', null, 'This is the Form Filler page.')
+      React.createElement('h1', { className: 'text-2xl font-bold' }, 'formfiller'),
+      React.createElement('p', null, 'This is the formfiller page.')
     );
   }
 }
@@ -621,8 +652,8 @@ class FormFillerComponent extends React.Component {
 class BuilderComponent extends React.Component {
   render() {
     return React.createElement('div', { className: 'p-4' },
-      React.createElement('h1', { className: 'text-2xl font-bold' }, 'Builder'),
-      React.createElement('p', null, 'This is the Builder page for creating new surveys.')
+      React.createElement('h1', { className: 'text-2xl font-bold' }, 'builder'),
+      React.createElement('p', null, 'This is the builder page for creating new surveys.')
     );
   }
 }
@@ -630,29 +661,31 @@ class BuilderComponent extends React.Component {
 class ResponseComponent extends React.Component {
   render() {
     return React.createElement('div', { className: 'p-4' },
-      React.createElement('h1', { className: 'text-2xl font-bold' }, 'Response'),
-      React.createElement('p', null, 'This is the Response page for viewing survey responses.')
+      React.createElement('h1', { className: 'text-2xl font-bold' }, 'response'),
+      React.createElement('p', null, 'This is the response page for viewing survey responses.')
     );
   }
 }
 
-// Main App component with delete functionality
+// Main App component with delete functionality and filters
 class App extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
       surveys: [],
+      filteredSurveys: [], // Filtered surveys based on SideNav filters
       currentUserId: null,
       currentUserName: null,
       notifications: [],
       editingSurvey: null,
       viewingQR: null,
-      deletingSurvey: null, // Track survey to delete
+      deletingSurvey: null,
       currentPage: window.location.pathname
     };
     this.loadSurveys = this.loadSurveys.bind(this);
     this.addNotification = this.addNotification.bind(this);
     this.handleDelete = this.handleDelete.bind(this);
+    this.handleFilter = this.handleFilter.bind(this);
   }
   componentDidMount() {
     var _this = this;
@@ -670,7 +703,7 @@ class App extends React.Component {
       console.error('Error loading current user:', error);
       _this.addNotification('Failed to load user information: ' + (xhr.responseText || error), 'error');
     });
-    // Load surveys with AuthorId
+    // Load surveys
     this.loadSurveys();
     // Handle page navigation
     window.addEventListener('popstate', function() {
@@ -684,7 +717,8 @@ class App extends React.Component {
       headers: { 'Accept': 'application/json; odata=verbose' },
       xhrFields: { withCredentials: true }
     }).done(function(data) {
-      _this.setState({ surveys: data.d.results });
+      var surveys = data.d.results;
+      _this.setState({ surveys: surveys, filteredSurveys: surveys });
     }).fail(function(xhr, status, error) {
       console.error('Error loading surveys:', error);
       _this.addNotification('Failed to load surveys: ' + (xhr.responseText || error), 'error');
@@ -704,7 +738,7 @@ class App extends React.Component {
   }
   handleDelete(surveyId) {
     var _this = this;
-    this.setState({ deletingSurvey: null }); // Close modal
+    this.setState({ deletingSurvey: null });
     getDigest().then(function(digest) {
       jQuery.ajax({
         url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + surveyId + ')',
@@ -717,19 +751,48 @@ class App extends React.Component {
         },
         xhrFields: { withCredentials: true }
       }).done(function() {
-        _this.props.addNotification('Survey deleted successfully!');
+        _this.addNotification('Survey deleted successfully!');
         console.log('Survey deleted:', surveyId);
         _this.loadSurveys();
       }).fail(function(xhr, status, error) {
         console.error('Error deleting survey:', error);
         var errorMessage = xhr.responseText || error || 'Unknown error';
-        if (error.status === 403) errorMessage = 'Access denied. You do not have permission to delete this survey.';
-        _this.props.addNotification('Failed to delete survey: ' + errorMessage, 'error');
+        if (xhr.status === 403) errorMessage = 'Access denied. You do not have permission to delete this survey.';
+        _this.addNotification('Failed to delete survey: ' + errorMessage, 'error');
       });
     }).fail(function(error) {
       console.error('Error getting digest:', error);
-      _this.props.addNotification('Failed to delete survey: Unable to get request digest.', 'error');
+      _this.addNotification('Failed to delete survey: Unable to get request digest.', 'error');
     });
+  }
+  handleFilter({ searchTerm, status }) {
+    var filtered = this.state.surveys;
+    // Apply search filter
+    if (searchTerm) {
+      searchTerm = searchTerm.toLowerCase();
+      filtered = filtered.filter(function(survey) {
+        return survey.Title.toLowerCase().includes(searchTerm);
+      });
+    }
+    // Apply status filter
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (status !== 'All') {
+      filtered = filtered.filter(function(survey) {
+        var startDate = survey.StartDate ? new Date(survey.StartDate) : null;
+        var endDate = survey.EndDate ? new Date(survey.EndDate) : null;
+        if (status === 'Published') return survey.Status === 'Publish';
+        if (status === 'Draft') return survey.Status === 'Draft';
+        if (status === 'Upcoming') return startDate && startDate > today;
+        if (status === 'Running') {
+          return startDate && endDate &&
+                 startDate <= today && endDate >= today &&
+                 survey.Status === 'Publish';
+        }
+        return true;
+      });
+    }
+    this.setState({ filteredSurveys: filtered });
   }
   render() {
     var _this = this;
@@ -744,7 +807,7 @@ class App extends React.Component {
       content = React.createElement('div', { className: 'p-4' },
         React.createElement('h1', { className: 'text-2xl font-bold mb-4' }, 'Surveys'),
         React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4' },
-          this.state.surveys.map(function(survey) {
+          this.state.filteredSurveys.map(function(survey) {
             return React.createElement(SurveyCard, {
               key: survey.Id,
               survey: survey,
@@ -760,7 +823,7 @@ class App extends React.Component {
     return React.createElement('div', { className: 'min-h-screen bg-gray-100' },
       React.createElement(TopNav, { currentUserName: this.state.currentUserName }),
       React.createElement('div', { className: 'flex' },
-        React.createElement(SideNav),
+        React.createElement(SideNav, { onFilter: this.handleFilter.bind(this) }),
         React.createElement('main', { className: 'flex-1 p-4' }, content)
       ),
       this.state.notifications.map(function(notification) {
