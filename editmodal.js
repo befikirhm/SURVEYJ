@@ -40,48 +40,34 @@ class EditModal extends React.Component {
       clearTimeout(this._debounce);
       this._debounce = setTimeout(function() {
         _this.setState({ isLoadingUsers: true });
-        // Search all users in SharePoint tenant using ClientPeoplePicker API
+        // Use Search API to find users across SharePoint
+        var queryText = 'contentclass:STS_User *' + encodeURIComponent(_this.state.searchTerm) + '*';
         jQuery.ajax({
-          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/SP.UI.ApplicationPages.ClientPeoplePickerWebServiceInterface/clientPeoplePickerSearchUser',
-          type: 'POST',
-          data: JSON.stringify({
-            queryParams: {
-              '__metadata': { 'type': 'SP.UI.ApplicationPages.ClientPeoplePickerQueryParameters' },
-              'AllowEmailAddresses': true,
-              'AllowMultipleEntities': false,
-              'AllUrlZones': false,
-              'MaximumEntitySuggestions': 10,
-              'PrincipalSource': 15, // All sources (tenant, AD, SharePoint)
-              'PrincipalType': 1, // Users only
-              'QueryString': _this.state.searchTerm,
-              'Required': false,
-              'SharePointGroupID': null,
-              'UrlZone': null,
-              'UrlZoneSpecified': false,
-              'Web': null,
-              'WebApplicationID': null
-            }
-          }),
+          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/search/query?querytext=\'' + queryText + '\'&selectproperties=\'AccountName,PreferredName,UserProfile_GUID\'&sourceid=\'b09a7990-05ea-4af9-81ef-edfab16c4e31\'&rowlimit=10',
           headers: {
             'Accept': 'application/json; odata=verbose',
-            'Content-Type': 'application/json; odata=verbose',
             'X-RequestDigest': jQuery('#__REQUESTDIGEST').val() || window._spPageContextInfo.formDigestValue
           },
           xhrFields: { withCredentials: true }
         }).done(function(data) {
           if (!_this._isMounted) return;
-          var users = data.d.ClientPeoplePickerSearchUser
-            .filter(function(u) { return u.Key && u.DisplayText && u.EntityType === 'User'; })
-            .map(function(u) {
-              // Extract user ID from Key (e.g., "i:0#.f|membership|user@domain.com")
-              var idMatch = u.EntityData?.SPUserID || '0';
-              return { Id: parseInt(idMatch, 10) || 0, Title: u.DisplayText };
-            });
+          var users = (data.d.query.PrimaryQueryResult.RelevantResults.Table.Rows.results || [])
+            .map(function(row) {
+              var cells = row.Cells.results.reduce(function(acc, cell) {
+                acc[cell.Key] = cell.Value;
+                return acc;
+              }, {});
+              return {
+                Id: cells.UserProfile_GUID ? parseInt(cells.UserProfile_GUID, 10) || 0 : 0,
+                Title: cells.PreferredName || cells.AccountName || 'Unknown User'
+              };
+            })
+            .filter(function(u) { return u.Id !== 0 && u.Title; });
           // Filter out already selected owners
           var availableUsers = users.filter(function(u) {
             return !_this.state.form.Owners.some(function(selected) { return selected.Id === u.Id; });
           });
-          _this.setState({ searchResults: availableUsers, isLoadingUsers: false, showDropdown: true });
+          _this.setState({ searchResults: availableUsers, isLoadingUsers: false, showDropdown: availableUsers.length > 0 });
         }).fail(function(xhr, status, error) {
           if (!_this._isMounted) return;
           console.error('Error searching users:', error, xhr.responseText);
