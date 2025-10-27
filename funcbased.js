@@ -1,7 +1,7 @@
 const { useState, useEffect, useRef } = React;
 const e = React.createElement;
 
-const baseUrl = window._spPageContextInfo.webAbsoluteUrl;
+const baseUrl = window._spPageContextInfo ? window._spPageContextInfo.webAbsoluteUrl : '';
 const listItemType = 'SP.Data.SurveysListItem';
 const contributeRoleId = 1073741827;
 
@@ -142,7 +142,8 @@ function EditModal({ survey, onClose, onSave, currentUser, showNotification }) {
     $.ajax({
       url: `${baseUrl}/_api/web/associatedmembergroup?$select=Id`,
       headers: { accept: 'application/json;odata=verbose' },
-      success: (data) => setGroupId(data.d.Id)
+      success: (data) => setGroupId(data.d.Id),
+      error: () => showNotification('error', 'Failed to fetch member group')
     });
   }, []);
 
@@ -333,15 +334,24 @@ function App() {
       const contentBox = document.getElementById('contentBox');
       if (contentBox) contentBox.style.cssText = 'margin-top: 0 !important; padding-top: 0 !important';
       console.log('SharePoint elements adjusted:', { ribbon: !!ribbon, titleRow: !!titleRow, workspace: !!workspace, contentBox: !!contentBox });
+      console.log('Main z-index:', document.querySelector('.min-h-screen')?.style.zIndex);
+      console.log('Create button z-index:', document.querySelector('.z-50')?.style.zIndex);
     };
     hideSharePointElements();
   }, []);
 
   useEffect(() => {
+    if (!baseUrl) {
+      showNotification('error', 'SharePoint context not loaded');
+      return;
+    }
     $.ajax({
       url: `${baseUrl}/_api/web/currentuser?$select=Id,Title`,
       headers: { accept: 'application/json;odata=verbose' },
-      success: (data) => setCurrentUser(data.d),
+      success: (data) => {
+        console.log('Current user:', data.d);
+        setCurrentUser(data.d);
+      },
       error: () => showNotification('error', 'Failed to fetch current user')
     });
   }, []);
@@ -490,10 +500,15 @@ function App() {
   );
 }
 
-// Use createRoot for React 18
-const rootElement = document.getElementById('root');
-if (rootElement) {
-  ReactDOM.createRoot(rootElement).render(e(App));
-} else {
-  console.error('Root element not found');
-}
+// Delay rendering until document and sp.js are ready
+$(document).ready(function() {
+  ExecuteOrDelayUntilScriptLoaded(function() {
+    const rootElement = document.getElementById('root');
+    if (rootElement) {
+      console.log('Root element found, rendering app');
+      ReactDOM.createRoot(rootElement).render(e(App));
+    } else {
+      console.error('Root element not found');
+    }
+  }, 'sp.js');
+});
