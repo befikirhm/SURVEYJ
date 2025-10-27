@@ -26,7 +26,7 @@ class Notification extends React.Component {
 class TopNav extends React.Component {
   render() {
     return React.createElement('nav', {
-      className: 'bg-blue-600 text-white p-4 flex justify-between items-center'
+      className: 'bg-blue-600 text-white p-4 flex justify-between items-center fixed top-0 left-0 right-0 z-1000'
     },
       React.createElement('div', { className: 'flex items-center' },
         React.createElement('img', {
@@ -43,7 +43,7 @@ class TopNav extends React.Component {
   }
 }
 
-// SideNav component with darker background
+// SideNav component with fixed toggle button
 class SideNav extends React.Component {
   constructor(props) {
     super(props);
@@ -52,43 +52,53 @@ class SideNav extends React.Component {
       searchTerm: '',
       selectedFilter: 'All'
     };
+    this.toggleSidebar = this.toggleSidebar.bind(this);
+  }
+  toggleSidebar() {
+    this.setState({ isOpen: !this.state.isOpen });
   }
   render() {
     var _this = this;
-    return React.createElement('div', {
-      className: 'bg-gray-800 text-white w-64 h-screen fixed md:static md:block ' + (this.state.isOpen ? 'block' : 'hidden')
-    },
+    return React.createElement('div', null,
+      // Toggle button for small screens
       React.createElement('button', {
-        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2',
-        onClick: function() { _this.setState({ isOpen: !_this.state.isOpen }); }
+        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded fixed top-16 left-4 z-1100',
+        onClick: this.toggleSidebar,
+        'aria-label': this.state.isOpen ? 'Collapse sidebar' : 'Expand sidebar'
       }, this.state.isOpen ? 'Collapse' : 'Expand'),
-      React.createElement('div', { className: 'p-4' },
-        React.createElement('div', { className: 'mb-4' },
-          React.createElement('input', {
-            type: 'text',
-            placeholder: 'Search forms...',
-            value: this.state.searchTerm,
-            onChange: function(e) {
-              _this.setState({ searchTerm: e.target.value });
-              _this.props.onFilter({ searchTerm: e.target.value, status: _this.state.selectedFilter });
-            },
-            className: 'w-full p-2 border rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500',
-            'aria-label': 'Search forms'
-          })
-        ),
-        React.createElement('ul', { className: 'space-y-2' },
-          ['All', 'Published', 'Draft', 'Upcoming', 'Running'].map(function(filter) {
-            return React.createElement('li', { key: filter },
-              React.createElement('button', {
-                className: 'w-full text-left p-2 hover:bg-gray-700 rounded ' +
-                  (_this.state.selectedFilter === filter ? 'bg-gray-700 font-semibold' : ''),
-                onClick: function() {
-                  _this.setState({ selectedFilter: filter });
-                  _this.props.onFilter({ searchTerm: _this.state.searchTerm, status: filter });
-                }
-              }, filter)
-            );
-          })
+      // Sidebar
+      React.createElement('div', {
+        className: 'bg-gray-800 text-white w-64 h-screen fixed top-0 left-0 transition-transform duration-300 ' +
+          (this.state.isOpen ? 'translate-x-0' : '-translate-x-full') + ' md:translate-x-0 md:static md:block z-900'
+      },
+        React.createElement('div', { className: 'p-4 mt-16 md:mt-0' },
+          React.createElement('div', { className: 'mb-4' },
+            React.createElement('input', {
+              type: 'text',
+              placeholder: 'Search forms...',
+              value: this.state.searchTerm,
+              onChange: function(e) {
+                _this.setState({ searchTerm: e.target.value });
+                _this.props.onFilter({ searchTerm: e.target.value, status: _this.state.selectedFilter });
+              },
+              className: 'w-full p-2 border rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500',
+              'aria-label': 'Search forms'
+            })
+          ),
+          React.createElement('ul', { className: 'space-y-2' },
+            ['All', 'Published', 'Draft', 'Upcoming', 'Running'].map(function(filter) {
+              return React.createElement('li', { key: filter },
+                React.createElement('button', {
+                  className: 'w-full text-left p-2 hover:bg-gray-700 rounded ' +
+                    (_this.state.selectedFilter === filter ? 'bg-gray-700 font-semibold' : ''),
+                  onClick: function() {
+                    _this.setState({ selectedFilter: filter });
+                    _this.props.onFilter({ searchTerm: _this.state.searchTerm, status: filter });
+                  }
+                }, filter)
+              );
+            })
+          )
         )
       )
     );
@@ -802,7 +812,7 @@ class App extends React.Component {
     } else if (this.state.currentPage.includes('/response')) {
       content = React.createElement(ResponseComponent);
     } else {
-      content = React.createElement('div', { className: 'p-4' },
+      content = React.createElement('div', { className: 'p-4 mt-16 md:mt-0' },
         React.createElement('div', { className: 'flex justify-between items-center mb-4' },
           React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
           React.createElement('button', {
