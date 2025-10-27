@@ -22,7 +22,7 @@ class Notification extends React.Component {
   }
 }
 
-// TopNav component (removed Sign Out)
+// TopNav component (no Sign Out)
 class TopNav extends React.Component {
   render() {
     return React.createElement('nav', {
@@ -36,7 +36,7 @@ class TopNav extends React.Component {
   }
 }
 
-// SideNav component with filters and responsive collapse
+// SideNav component with filters only (no navigation links)
 class SideNav extends React.Component {
   constructor(props) {
     super(props);
@@ -83,33 +83,14 @@ class SideNav extends React.Component {
                 }
               }, filter)
             );
-          }),
-          // Navigation links
-          React.createElement('li', { className: 'mt-4 border-t pt-2' },
-            React.createElement('a', {
-              href: '/formfiller',
-              className: 'block p-2 hover:bg-blue-100 rounded'
-            }, 'formfiller')
-          ),
-          React.createElement('li', null,
-            React.createElement('a', {
-              href: '/builder',
-              className: 'block p-2 hover:bg-blue-100 rounded'
-            }, 'builder')
-          ),
-          React.createElement('li', null,
-            React.createElement('a', {
-              href: '/response',
-              className: 'block p-2 hover:bg-blue-100 rounded'
-            }, 'response')
-          )
+          })
         )
       )
     );
   }
 }
 
-// SurveyCard component with Delete button
+// SurveyCard component with links to builder, response, formfiller
 class SurveyCard extends React.Component {
   render() {
     return React.createElement('div', {
@@ -117,67 +98,28 @@ class SurveyCard extends React.Component {
     },
       React.createElement('h3', { className: 'text-lg font-semibold truncate' }, this.props.survey.Title),
       React.createElement('p', { className: 'text-gray-600' }, 'Owners: ' + (this.props.survey.Owners?.results?.map(function(o) { return o.Title; }).join(', ') || 'None')),
-      React.createElement('p', { className: 'text-gray-600' }, 'Responses: ' + (this.props.survey.Responses || 0)),
-      React.createElement('div', { className: 'mt-2 flex gap-2' },
+      React.createElement('div', { className: 'mt-2 flex gap-2 flex-wrap' },
         React.createElement('button', {
           className: 'bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600',
-          onClick: this.props.onEdit,
-          'aria-label': 'Edit survey metadata'
-        }, 'Edit'),
+          onClick: function() { window.location.href = '/builder?surveyId=' + this.props.survey.Id; }.bind(this),
+          'aria-label': 'Edit survey in builder'
+        }, 'Builder'),
         React.createElement('button', {
           className: 'bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600',
-          onClick: this.props.onViewQR,
-          'aria-label': 'View QR code'
-        }, 'QR Code'),
+          onClick: function() { window.location.href = '/response?surveyId=' + this.props.survey.Id; }.bind(this),
+          'aria-label': 'View survey responses'
+        }, 'Response'),
+        React.createElement('button', {
+          className: 'bg-purple-500 text-white px-3 py-1 rounded hover:bg-purple-600',
+          onClick: function() { window.location.href = '/formfiller?surveyId=' + this.props.survey.Id; }.bind(this),
+          'aria-label': 'Fill survey'
+        }, 'Formfiller'),
         React.createElement('button', {
           className: 'bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600' + (this.props.survey.AuthorId === this.props.currentUserId ? '' : ' opacity-50 cursor-not-allowed'),
           onClick: this.props.onDelete,
           disabled: this.props.survey.AuthorId !== this.props.currentUserId,
           'aria-label': 'Delete survey'
         }, 'Delete')
-      )
-    );
-  }
-}
-
-// QRModal component
-class QRModal extends React.Component {
-  componentDidMount() {
-    var qr = new QRious({
-      element: document.getElementById('qr-' + this.props.survey.Id),
-      value: window._spPageContextInfo.webAbsoluteUrl + '/formfiller?surveyId=' + this.props.survey.Id,
-      size: 200
-    });
-  }
-  render() {
-    return React.createElement('div', {
-      className: 'fixed inset-0 flex items-center justify-center z-1000 bg-black/50'
-    },
-      React.createElement('div', {
-        className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl'
-      },
-        React.createElement('div', {
-          className: 'flex justify-between items-center p-4 border-b bg-gray-100'
-        },
-          React.createElement('h2', { className: 'text-lg font-bold' }, 'QR Code'),
-          React.createElement('button', {
-            type: 'button',
-            className: 'text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full w-8 h-8 flex items-center justify-center',
-            onClick: this.props.onClose,
-            'aria-label': 'Close QR modal'
-          }, '\u00D7')
-        ),
-        React.createElement('div', { className: 'p-6 flex justify-center' },
-          React.createElement('canvas', { id: 'qr-' + this.props.survey.Id })
-        ),
-        React.createElement('div', { className: 'p-4 border-t bg-gray-50 flex justify-end gap-3' },
-          React.createElement('button', {
-            type: 'button',
-            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 transition',
-            onClick: this.props.onClose,
-            'aria-label': 'Close QR modal'
-          }, 'Close')
-        )
       )
     );
   }
@@ -639,7 +581,7 @@ class EditModal extends React.Component {
   }
 }
 
-// Placeholder components for renamed pages
+// Placeholder components for pages
 class FormFillerComponent extends React.Component {
   render() {
     return React.createElement('div', { className: 'p-4' },
@@ -653,7 +595,7 @@ class BuilderComponent extends React.Component {
   render() {
     return React.createElement('div', { className: 'p-4' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'builder'),
-      React.createElement('p', null, 'This is the builder page for creating new surveys.')
+      React.createElement('p', null, 'This is the builder page for creating/editing surveys.')
     );
   }
 }
@@ -667,18 +609,17 @@ class ResponseComponent extends React.Component {
   }
 }
 
-// Main App component with delete functionality and filters
+// Main App component with filters and delete functionality
 class App extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
       surveys: [],
-      filteredSurveys: [], // Filtered surveys based on SideNav filters
+      filteredSurveys: [],
       currentUserId: null,
       currentUserName: null,
       notifications: [],
       editingSurvey: null,
-      viewingQR: null,
       deletingSurvey: null,
       currentPage: window.location.pathname
     };
@@ -713,7 +654,7 @@ class App extends React.Component {
   loadSurveys() {
     var _this = this;
     jQuery.ajax({
-      url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items?$select=Id,Title,Owners/Id,Owners/Title,StartDate,EndDate,Status,Responses,AuthorId&$expand=Owners',
+      url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items?$select=Id,Title,Owners/Id,Owners/Title,StartDate,EndDate,Status,AuthorId&$expand=Owners',
       headers: { 'Accept': 'application/json; odata=verbose' },
       xhrFields: { withCredentials: true }
     }).done(function(data) {
@@ -797,11 +738,11 @@ class App extends React.Component {
   render() {
     var _this = this;
     var content;
-    if (this.state.currentPage === '/formfiller') {
+    if (this.state.currentPage.includes('/formfiller')) {
       content = React.createElement(FormFillerComponent);
-    } else if (this.state.currentPage === '/builder') {
+    } else if (this.state.currentPage.includes('/builder')) {
       content = React.createElement(BuilderComponent);
-    } else if (this.state.currentPage === '/response') {
+    } else if (this.state.currentPage.includes('/response')) {
       content = React.createElement(ResponseComponent);
     } else {
       content = React.createElement('div', { className: 'p-4' },
@@ -812,8 +753,6 @@ class App extends React.Component {
               key: survey.Id,
               survey: survey,
               currentUserId: _this.state.currentUserId,
-              onEdit: function() { _this.setState({ editingSurvey: survey }); },
-              onViewQR: function() { _this.setState({ viewingQR: survey }); },
               onDelete: function() { _this.setState({ deletingSurvey: survey }); }
             });
           })
@@ -839,10 +778,6 @@ class App extends React.Component {
         addNotification: this.addNotification.bind(this),
         loadSurveys: this.loadSurveys.bind(this),
         onClose: function() { _this.setState({ editingSurvey: null }); }
-      }),
-      this.state.viewingQR && React.createElement(QRModal, {
-        survey: this.state.viewingQR,
-        onClose: function() { _this.setState({ viewingQR: null }); }
       }),
       this.state.deletingSurvey && React.createElement(DeleteModal, {
         survey: this.state.deletingSurvey,
