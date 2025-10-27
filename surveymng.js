@@ -706,6 +706,335 @@ class EditModal extends React.Component {
   }
 }
 
+// CreateFormModal component
+class CreateFormModal extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      form: {
+        Title: '',
+        Owners: [{ Id: this.props.currentUserId, Title: this.props.currentUserName }],
+        StartDate: '',
+        EndDate: ''
+      },
+      searchTerm: '',
+      searchResults: [],
+      isLoadingUsers: false,
+      isSaving: false,
+      showDropdown: false
+    };
+    this.handleUserSelect = this.handleUserSelect.bind(this);
+    this.handleUserRemove = this.handleUserRemove.bind(this);
+    this.handleSave = this.handleSave.bind(this);
+  }
+  componentDidMount() {
+    this._isMounted = true;
+  }
+  componentWillUnmount() {
+    this._isMounted = false;
+    clearTimeout(this._debounce);
+  }
+  componentDidUpdate(prevProps, prevState) {
+    var _this = this;
+    if (prevState.searchTerm !== this.state.searchTerm) {
+      if (!this.state.searchTerm) {
+        this.setState({ searchResults: [], showDropdown: false });
+        return;
+      }
+      clearTimeout(this._debounce);
+      this._debounce = setTimeout(function() {
+        _this.setState({ isLoadingUsers: true });
+        jQuery.ajax({
+          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/sitegroups?$filter=Title eq \'' + encodeURIComponent(_spPageContextInfo.webTitle + ' Members') + '\'',
+          headers: { 'Accept': 'application/json; odata=verbose' },
+          xhrFields: { withCredentials: true }
+        }).then(function(groupData) {
+          if (!_this._isMounted || !groupData.d.results.length) {
+            _this.setState({ isLoadingUsers: false, showDropdown: false });
+            _this.props.addNotification('Members group not found.', 'error');
+            return;
+          }
+          var groupId = groupData.d.results[0].Id;
+          return jQuery.ajax({
+            url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/sitegroups(' + groupId + ')/users',
+            headers: { 'Accept': 'application/json; odata=verbose' },
+            xhrFields: { withCredentials: true }
+          });
+        }).then(function(userData) {
+          if (!_this._isMounted) return;
+          console.log('Site members search response:', userData);
+          var users = userData.d.results
+            .filter(function(u) { return u.Id && u.Title && u.Title.toLowerCase().includes(_this.state.searchTerm.toLowerCase()); })
+            .map(function(u) { return { Id: u.Id, Title: u.Title }; });
+          console.log('Parsed users:', users);
+          var availableUsers = users.filter(function(u) {
+            return !_this.state.form.Owners.some(function(selected) { return selected.Id === u.Id; });
+          });
+          _this.setState({
+            searchResults: availableUsers,
+            isLoadingUsers: false,
+            showDropdown: availableUsers.length > 0
+          });
+          if (availableUsers.length === 0) {
+            _this.props.addNotification('No matching users found in site members.', 'warning');
+          }
+        }).fail(function(xhr, status, error) {
+          if (!_this._isMounted) return;
+          console.error('Site members search error:', error, xhr.responseText);
+          _this.props.addNotification('Failed to search site members: ' + (xhr.responseText || error), 'error');
+          _this.setState({ isLoadingUsers: false, showDropdown: false });
+        });
+      }, 300);
+    }
+  }
+  handleUserSelect(user) {
+    this.setState({
+      form: Object.assign({}, this.state.form, { Owners: this.state.form.Owners.concat([user]) }),
+      searchTerm: '',
+      showDropdown: false
+    });
+  }
+  handleUserRemove(userId) {
+    if (userId === this.props.currentUserId) {
+      this.props.addNotification('You cannot remove yourself as an owner.', 'error');
+      return;
+    }
+    this.setState({
+      form: Object.assign({}, this.state.form, {
+        Owners: this.state.form.Owners.filter(function(o) {
+          return o.Id !== userId;
+        })
+      })
+    });
+  }
+  handleSave() {
+    var _this = this;
+    if (!this.state.form.Title.trim()) {
+      this.props.addNotification('Title is required.', 'error');
+      return;
+    }
+    if (this.state.form.StartDate && this.state.form.EndDate &&
+        new Date(this.state.form.EndDate) <= new Date(this.state.form.StartDate)) {
+      this.props.addNotification('End Date must be after Start Date.', 'error');
+      return;
+    }
+    if (!this.state.form.Owners.some(function(o) { return o.Id === _this.props.currentUserId; })) {
+      this.props.addNotification('You must be an owner of the form.', 'error');
+      return;
+    }
+    this.setState({ isSaving: true });
+    getDigest().then(function(digest) {
+      var payload = {
+        '__metadata': { 'type': 'SP.Data.SurveysListItem' },
+        Title: _this.state.form.Title,
+        OwnersId: { results: _this.state.form.Owners.map(function(o) { return o.Id; }) },
+        Status: 'Draft',
+        SurveyJson: JSON.stringify({ title: _this.state.form.Title })
+      };
+      if (_this.state.form.StartDate) payload.StartDate = new Date(_this.state.form.StartDate).toISOString();
+      if (_this.state.form.EndDate) payload.EndDate = new Date(_this.state.form.EndDate).toISOString();
+      console.log('Creating new form:', payload);
+      jQuery.ajax({
+        url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items',
+        type: 'POST',
+        data: JSON.stringify(payload),
+        headers: {
+          'Accept': 'application/json; odata=verbose',
+          'Content-Type': 'application/json; odata=verbose',
+          'X-RequestDigest': digest
+        },
+        xhrFields: { withCredentials: true }
+      }).then(function(data) {
+        var newItemId = data.d.Id;
+        return jQuery.ajax({
+          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + newItemId + ')/effectiveBasePermissions',
+          headers: { 'Accept': 'application/json; odata=verbose' },
+          xhrFields: { withCredentials: true }
+        }).then(function(permissions) {
+          var hasManagePermissions = permissions.d.EffectiveBasePermissions.High & 0x00000080;
+          if (!hasManagePermissions) {
+            _this.props.addNotification('Form created. Permissions not set due to insufficient access.', 'warning');
+            window.location.href = '/builder.aspx?surveyId=' + newItemId;
+            _this.props.loadSurveys();
+            _this.props.onClose();
+            _this.setState({ isSaving: false });
+            return Promise.resolve();
+          }
+          // Break role inheritance
+          return jQuery.ajax({
+            url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + newItemId + ')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)',
+            type: 'POST',
+            headers: {
+              'Accept': 'application/json; odata=verbose',
+              'X-RequestDigest': digest
+            },
+            xhrFields: { withCredentials: true }
+          }).then(function() {
+            // Add permissions for owners
+            var ownerIds = _this.state.form.Owners.map(function(o) { return o.Id; });
+            var addPromises = ownerIds.map(function(userId) {
+              console.log('Adding permission for user:', userId);
+              return jQuery.ajax({
+                url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + newItemId + ')/roleassignments/addroleassignment(principalid=' + userId + ', roledefid=1073741827)',
+                type: 'POST',
+                headers: {
+                  'Accept': 'application/json; odata=verbose',
+                  'X-RequestDigest': digest
+                },
+                xhrFields: { withCredentials: true }
+              });
+            });
+            return Promise.all(addPromises);
+          });
+        });
+      }).then(function() {
+        _this.props.addNotification('Form created successfully!');
+        console.log('Form created, redirecting to builder:', newItemId);
+        window.location.href = '/builder.aspx?surveyId=' + newItemId;
+        _this.props.loadSurveys();
+        _this.props.onClose();
+        _this.setState({ isSaving: false });
+      }).fail(function(error) {
+        console.error('Error creating form:', error);
+        var errorMessage = error.responseText || error.message || 'Unknown error';
+        if (error.status === 403) errorMessage = 'Access denied. Ensure you have permission to create forms.';
+        _this.props.addNotification('Failed to create form: ' + errorMessage, 'error');
+        _this.setState({ isSaving: false });
+      });
+    }).fail(function(error) {
+      console.error('Error getting digest:', error);
+      _this.props.addNotification('Failed to create form: Unable to get request digest.', 'error');
+      _this.setState({ isSaving: false });
+    });
+  }
+  render() {
+    var _this = this;
+    return React.createElement('div', {
+      className: 'fixed inset-0 flex items-center justify-center z-1200 bg-black/50'
+    },
+      React.createElement('div', { className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl' },
+        React.createElement('div', { className: 'flex justify-between items-center p-4 border-b bg-gray-100' },
+          React.createElement('h2', { className: 'text-lg font-bold text-gray-800' }, 'Create New Form'),
+          React.createElement('button', {
+            type: 'button',
+            className: 'text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full w-8 h-8 flex items-center justify-center',
+            onClick: this.props.onClose,
+            'aria-label': 'Close create form modal'
+          },
+            React.createElement('i', { className: 'fas fa-times' })
+          )
+        ),
+        React.createElement('div', { className: 'p-6 max-h-96 overflow-y-auto' },
+          React.createElement('div', { className: 'space-y-4' },
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Title *'),
+              React.createElement('input', {
+                type: 'text',
+                value: this.state.form.Title,
+                onChange: function(e) { _this.setState({ form: Object.assign({}, _this.state.form, { Title: e.target.value }) }); },
+                placeholder: 'Enter form title',
+                className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
+                'aria-label': 'Form title'
+              })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Owners'),
+              React.createElement('div', { className: 'relative' },
+                React.createElement('input', {
+                  type: 'text',
+                  value: this.state.searchTerm,
+                  onChange: function(e) { _this.setState({ searchTerm: e.target.value }); },
+                  placeholder: 'Search for site members...',
+                  className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
+                  'aria-label': 'Search for site members'
+                }),
+                this.state.isLoadingUsers && React.createElement('div', { className: 'absolute top-2 right-2' },
+                  React.createElement('i', { className: 'fas fa-spinner fa-spin' })
+                ),
+                this.state.showDropdown && this.state.searchResults.length > 0 && React.createElement('ul', {
+                  className: 'absolute z-10 w-full bg-white border rounded mt-1 max-h-48 overflow-y-auto shadow-lg'
+                },
+                  this.state.searchResults.map(function(user) {
+                    return React.createElement('li', {
+                      key: user.Id,
+                      onClick: function() { _this.handleUserSelect(user); },
+                      className: 'p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0',
+                      role: 'option',
+                      'aria-selected': 'false'
+                    }, user.Title);
+                  })
+                )
+              ),
+              React.createElement('div', { className: 'mt-2 flex flex-wrap gap-2' },
+                this.state.form.Owners.length === 0
+                  ? React.createElement('p', { className: 'text-gray-500 text-sm' }, 'No owners selected')
+                  : this.state.form.Owners.map(function(user) {
+                      return React.createElement('div', {
+                        key: user.Id,
+                        className: 'flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'
+                      },
+                        React.createElement('span', null, user.Title),
+                        React.createElement('button', {
+                          type: 'button',
+                          onClick: function() { _this.handleUserRemove(user.Id); },
+                          className: 'ml-2 text-red-600 hover:text-red-800 font-bold',
+                          disabled: user.Id === _this.props.currentUserId,
+                          'aria-label': 'Remove ' + user.Title + ' from owners'
+                        }, user.Id === _this.props.currentUserId ? '' : React.createElement('i', { className: 'fas fa-times' }))
+                      );
+                    })
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Start Date'),
+              React.createElement('input', {
+                type: 'date',
+                value: this.state.form.StartDate,
+                onChange: function(e) { _this.setState({ form: Object.assign({}, _this.state.form, { StartDate: e.target.value }) }); },
+                className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
+                'aria-label': 'Start date'
+              })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'End Date'),
+              React.createElement('input', {
+                type: 'date',
+                value: this.state.form.EndDate,
+                onChange: function(e) { _this.setState({ form: Object.assign({}, _this.state.form, { EndDate: e.target.value }) }); },
+                className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
+                'aria-label': 'End date'
+              })
+            )
+          )
+        ),
+        React.createElement('div', { className: 'flex flex-wrap gap-3 justify-end p-4 border-t bg-gray-50' },
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 flex items-center' + (this.state.isSaving ? ' opacity-50 cursor-not-allowed' : ''),
+            onClick: this.handleSave.bind(this),
+            disabled: this.state.isSaving,
+            'aria-label': 'Create form'
+          },
+            this.state.isSaving
+              ? [React.createElement('i', { className: 'fas fa-spinner fa-spin mr-2', key: 'spinner' }), 'Creating...']
+              : [React.createElement('i', { className: 'fas fa-save mr-2', key: 'save-icon' }), 'Create']
+          ),
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 flex items-center',
+            onClick: this.props.onClose,
+            disabled: this.state.isSaving,
+            'aria-label': 'Cancel form creation'
+          },
+            React.createElement('i', { className: 'fas fa-times mr-2' }),
+            'Cancel'
+          )
+        )
+      )
+    );
+  }
+}
+
 // FormFillerComponent with draft status check
 class FormFillerComponent extends React.Component {
   constructor(props) {
@@ -808,6 +1137,7 @@ class App extends React.Component {
       editingSurvey: null,
       viewingQR: null,
       deletingSurvey: null,
+      creatingForm: false,
       currentPage: window.location.pathname
     };
     this.loadSurveys = this.loadSurveys.bind(this);
@@ -954,7 +1284,7 @@ class App extends React.Component {
           React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
           React.createElement('button', {
             className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center z-50',
-            onClick: function() { window.open('/builder.aspx', '_blank'); },
+            onClick: function() { _this.setState({ creatingForm: true }); },
             'aria-label': 'Create new form'
           },
             React.createElement('i', { className: 'fas fa-plus mr-2' }),
@@ -1005,6 +1335,13 @@ class App extends React.Component {
         survey: this.state.deletingSurvey,
         onConfirm: function() { _this.handleDelete(_this.state.deletingSurvey.Id); },
         onCancel: function() { _this.setState({ deletingSurvey: null }); }
+      }),
+      this.state.creatingForm && React.createElement(CreateFormModal, {
+        currentUserId: this.state.currentUserId,
+        currentUserName: this.state.currentUserName,
+        addNotification: this.addNotification.bind(this),
+        loadSurveys: this.loadSurveys.bind(this),
+        onClose: function() { _this.setState({ creatingForm: false }); }
       })
     );
   }
