@@ -13,7 +13,7 @@ function getDigest() {
 // Notification component
 class Notification extends React.Component {
   render() {
-    var className = 'fixed top-4 right-4 p-4 rounded shadow-lg text-white max-w-sm';
+    var className = 'fixed top-4 right-4 p-4 rounded shadow-lg text-white max-w-sm z-2000';
     if (this.props.type === 'error') className += ' bg-red-500';
     else if (this.props.type === 'warning') className += ' bg-yellow-500';
     else if (this.props.type === 'info') className += ' bg-blue-500';
@@ -22,13 +22,20 @@ class Notification extends React.Component {
   }
 }
 
-// TopNav component (no Sign Out)
+// TopNav component with logo
 class TopNav extends React.Component {
   render() {
     return React.createElement('nav', {
       className: 'bg-blue-600 text-white p-4 flex justify-between items-center'
     },
-      React.createElement('div', { className: 'text-lg font-bold' }, 'Survey Dashboard'),
+      React.createElement('div', { className: 'flex items-center' },
+        React.createElement('img', {
+          src: '/SiteAssets/logo.png', // Replace with actual logo URL
+          alt: 'Survey Dashboard Logo',
+          className: 'h-8 mr-2'
+        }),
+        React.createElement('div', { className: 'text-lg font-bold' }, 'Survey Dashboard')
+      ),
       React.createElement('div', null,
         React.createElement('span', { className: 'mr-4' }, 'Welcome, ' + this.props.currentUserName)
       )
@@ -36,14 +43,14 @@ class TopNav extends React.Component {
   }
 }
 
-// SideNav component with filters only, darker background
+// SideNav component with darker background
 class SideNav extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      isOpen: false, // Closed by default on mobile
+      isOpen: false,
       searchTerm: '',
-      selectedFilter: 'All' // All, Published, Draft, Upcoming, Running
+      selectedFilter: 'All'
     };
   }
   render() {
@@ -56,7 +63,6 @@ class SideNav extends React.Component {
         onClick: function() { _this.setState({ isOpen: !_this.state.isOpen }); }
       }, this.state.isOpen ? 'Collapse' : 'Expand'),
       React.createElement('div', { className: 'p-4' },
-        // Search filter
         React.createElement('div', { className: 'mb-4' },
           React.createElement('input', {
             type: 'text',
@@ -70,7 +76,6 @@ class SideNav extends React.Component {
             'aria-label': 'Search surveys'
           })
         ),
-        // Status filters
         React.createElement('ul', { className: 'space-y-2' },
           ['All', 'Published', 'Draft', 'Upcoming', 'Running'].map(function(filter) {
             return React.createElement('li', { key: filter },
@@ -90,15 +95,51 @@ class SideNav extends React.Component {
   }
 }
 
-// SurveyCard component with restored buttons and conditional Delete
+// SurveyCard component with header, footer, chips, responses, dates, status
 class SurveyCard extends React.Component {
   render() {
+    const startDate = this.props.survey.StartDate ? new Date(this.props.survey.StartDate).toLocaleDateString('en-US') : 'N/A';
+    const endDate = this.props.survey.EndDate ? new Date(this.props.survey.EndDate).toLocaleDateString('en-US') : 'N/A';
     return React.createElement('div', {
-      className: 'bg-white p-4 rounded shadow-md hover:shadow-lg transition'
+      className: 'bg-white rounded shadow-md hover:shadow-lg transition flex flex-col'
     },
-      React.createElement('h3', { className: 'text-lg font-semibold truncate' }, this.props.survey.Title),
-      React.createElement('p', { className: 'text-gray-600' }, 'Owners: ' + (this.props.survey.Owners?.results?.map(function(o) { return o.Title; }).join(', ') || 'None')),
-      React.createElement('div', { className: 'mt-2 flex gap-2 flex-wrap' },
+      // Header
+      React.createElement('div', {
+        className: 'p-4 border-b bg-gray-50'
+      },
+        React.createElement('h3', {
+          className: 'text-lg font-semibold truncate',
+          title: this.props.survey.Title
+        }, this.props.survey.Title)
+      ),
+      // Body
+      React.createElement('div', { className: 'p-4 flex-grow' },
+        React.createElement('p', { className: 'text-gray-600 mb-2' },
+          'Status: ', React.createElement('span', {
+            className: this.props.survey.Status === 'Published' ? 'text-green-600 font-semibold' : 'text-gray-600'
+          }, this.props.survey.Status || 'Draft')
+        ),
+        React.createElement('p', { className: 'text-gray-600 mb-2' },
+          'Date Range: ' + startDate + ' - ' + endDate
+        ),
+        React.createElement('p', { className: 'text-gray-600 mb-2' },
+          'Responses: ' + (this.props.survey.responseCount || 0)
+        ),
+        React.createElement('div', { className: 'flex flex-wrap gap-2' },
+          this.props.survey.Owners?.results?.length > 0
+            ? this.props.survey.Owners.results.map(function(owner) {
+                return React.createElement('div', {
+                  key: owner.Id,
+                  className: 'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'
+                }, owner.Title);
+              })
+            : React.createElement('p', { className: 'text-gray-500 text-sm' }, 'No owners')
+        )
+      ),
+      // Footer
+      React.createElement('div', {
+        className: 'p-4 border-t bg-gray-50 flex gap-2 flex-wrap'
+      },
         React.createElement('button', {
           className: 'bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600',
           onClick: function() { window.location.href = '/builder?surveyId=' + this.props.survey.Id; }.bind(this),
@@ -134,7 +175,7 @@ class SurveyCard extends React.Component {
   }
 }
 
-// QRModal component
+// QRModal component with download and copy URL
 class QRModal extends React.Component {
   componentDidMount() {
     var qr = new QRious({
@@ -143,7 +184,23 @@ class QRModal extends React.Component {
       size: 200
     });
   }
+  downloadQR() {
+    var canvas = document.getElementById('qr-' + this.props.survey.Id);
+    var link = document.createElement('a');
+    link.href = canvas.toDataURL('image/png');
+    link.download = this.props.survey.Title.replace(/[^a-z0-9]/gi, '_') + '_QR.png';
+    link.click();
+  }
+  copyURL() {
+    var url = window._spPageContextInfo.webAbsoluteUrl + '/formfiller?surveyId=' + this.props.survey.Id;
+    navigator.clipboard.writeText(url).then(() => {
+      this.props.addNotification('URL copied to clipboard!', 'success');
+    }).catch(() => {
+      this.props.addNotification('Failed to copy URL.', 'error');
+    });
+  }
   render() {
+    var _this = this;
     return React.createElement('div', {
       className: 'fixed inset-0 flex items-center justify-center z-1000 bg-black/50'
     },
@@ -165,6 +222,18 @@ class QRModal extends React.Component {
           React.createElement('canvas', { id: 'qr-' + this.props.survey.Id })
         ),
         React.createElement('div', { className: 'p-4 border-t bg-gray-50 flex justify-end gap-3' },
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition',
+            onClick: this.copyURL.bind(this),
+            'aria-label': 'Copy form URL'
+          }, 'Copy URL'),
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 transition',
+            onClick: this.downloadQR.bind(this),
+            'aria-label': 'Download QR code'
+          }, 'Download'),
           React.createElement('button', {
             type: 'button',
             className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 transition',
@@ -200,7 +269,7 @@ class DeleteModal extends React.Component {
           }, '\u00D7')
         ),
         React.createElement('div', { className: 'p-6' },
-          React.createElement('p', { className: 'text-gray-700' },
+          React.createElement('p', { className: 'text-gray-600' },
             'Are you sure you want to delete the survey "' + this.props.survey.Title + '"? This action cannot be undone.'
           )
         ),
@@ -223,7 +292,7 @@ class DeleteModal extends React.Component {
   }
 }
 
-// EditModal component
+// EditModal component with site users only
 class EditModal extends React.Component {
   constructor(props) {
     super(props);
@@ -240,8 +309,7 @@ class EditModal extends React.Component {
       searchResults: [],
       isLoadingUsers: false,
       isSaving: false,
-      showDropdown: false,
-      isFallbackMode: false
+      showDropdown: false
     };
     this.handleUserSelect = this.handleUserSelect.bind(this);
     this.handleUserRemove = this.handleUserRemove.bind(this);
@@ -258,7 +326,7 @@ class EditModal extends React.Component {
     var _this = this;
     if (prevState.searchTerm !== this.state.searchTerm) {
       if (!this.state.searchTerm) {
-        this.setState({ searchResults: [], showDropdown: false, isFallbackMode: false });
+        this.setState({ searchResults: [], showDropdown: false });
         return;
       }
       clearTimeout(this._debounce);
@@ -282,108 +350,19 @@ class EditModal extends React.Component {
           var availableUsers = users.filter(function(u) {
             return !_this.state.form.Owners.some(function(selected) { return selected.Id === u.Id; });
           });
-          if (availableUsers.length === 0 && !_this.state.isFallbackMode) {
-            console.log('No site users found, falling back to Search API');
-            _this.props.addNotification('No matching site users. Searching all users...', 'info');
-            var queryText = 'PreferredName:*' + encodeURIComponent(_this.state.searchTerm) + '* OR AccountName:*' + encodeURIComponent(_this.state.searchTerm) + '*';
-            console.log('Search API query:', queryText);
-            jQuery.ajax({
-              url: window._spPageContextInfo.webAbsoluteUrl + '/_api/search/query?querytext=\'' + queryText + '\'&selectproperties=\'AccountName,PreferredName,UserProfile_GUID\'&sourceid=\'b09a7990-05ea-4af9-81ef-edfab16c4e31\'&rowlimit=10',
-              headers: {
-                'Accept': 'application/json; odata=verbose',
-                'X-RequestDigest': jQuery('#__REQUESTDIGEST').val() || window._spPageContextInfo.formDigestValue
-              },
-              xhrFields: { withCredentials: true }
-            }).done(function(searchData) {
-              if (!_this._isMounted) return;
-              console.log('Search API response:', searchData);
-              var searchUsers = (searchData.d.query.PrimaryQueryResult.RelevantResults.Table.Rows.results || [])
-                .map(function(row) {
-                  var cells = row.Cells.results.reduce(function(acc, cell) {
-                    acc[cell.Key] = cell.Value;
-                    return acc;
-                  }, {});
-                  return {
-                    Id: cells.UserProfile_GUID ? parseInt(cells.UserProfile_GUID, 10) || 0 : 0,
-                    Title: cells.PreferredName || cells.AccountName || 'Unknown User'
-                  };
-                })
-                .filter(function(u) { return u.Id !== 0 && u.Title && u.Title !== 'Unknown User'; });
-              console.log('Parsed search users:', searchUsers);
-              var availableSearchUsers = searchUsers.filter(function(u) {
-                return !_this.state.form.Owners.some(function(selected) { return selected.Id === u.Id; });
-              });
-              _this.setState({
-                searchResults: availableSearchUsers,
-                isLoadingUsers: false,
-                showDropdown: availableSearchUsers.length > 0,
-                isFallbackMode: true
-              });
-              if (availableSearchUsers.length === 0) {
-                _this.props.addNotification('No matching users found in tenant.', 'warning');
-              }
-            }).fail(function(xhr, status, error) {
-              if (!_this._isMounted) return;
-              console.error('Search API error:', error, xhr.responseText);
-              _this.props.addNotification('Failed to search all users: ' + (xhr.responseText || error), 'error');
-              _this.setState({ isLoadingUsers: false, showDropdown: false, isFallbackMode: false });
-            });
-          } else {
-            _this.setState({
-              searchResults: availableUsers,
-              isLoadingUsers: false,
-              showDropdown: availableUsers.length > 0,
-              isFallbackMode: false
-            });
+          _this.setState({
+            searchResults: availableUsers,
+            isLoadingUsers: false,
+            showDropdown: availableUsers.length > 0
+          });
+          if (availableUsers.length === 0) {
+            _this.props.addNotification('No matching site users found.', 'warning');
           }
         }).fail(function(xhr, status, error) {
           if (!_this._isMounted) return;
           console.error('Site users error:', error, xhr.responseText);
           _this.props.addNotification('Failed to search site users: ' + (xhr.responseText || error), 'error');
-          console.log('Site users failed, trying Search API');
-          var queryText = 'PreferredName:*' + encodeURIComponent(_this.state.searchTerm) + '* OR AccountName:*' + encodeURIComponent(_this.state.searchTerm) + '*';
-          console.log('Search API query:', queryText);
-          jQuery.ajax({
-            url: window._spPageContextInfo.webAbsoluteUrl + '/_api/search/query?querytext=\'' + queryText + '\'&selectproperties=\'AccountName,PreferredName,UserProfile_GUID\'&sourceid=\'b09a7990-05ea-4af9-81ef-edfab16c4e31\'&rowlimit=10',
-            headers: {
-              'Accept': 'application/json; odata=verbose',
-              'X-RequestDigest': jQuery('#__REQUESTDIGEST').val() || window._spPageContextInfo.formDigestValue
-            },
-            xhrFields: { withCredentials: true }
-          }).done(function(searchData) {
-            if (!_this._isMounted) return;
-            console.log('Search API response:', searchData);
-            var searchUsers = (searchData.d.query.PrimaryQueryResult.RelevantResults.Table.Rows.results || [])
-              .map(function(row) {
-                var cells = row.Cells.results.reduce(function(acc, cell) {
-                  acc[cell.Key] = cell.Value;
-                  return acc;
-                }, {});
-                return {
-                  Id: cells.UserProfile_GUID ? parseInt(cells.UserProfile_GUID, 10) || 0 : 0,
-                  Title: cells.PreferredName || cells.AccountName || 'Unknown User'
-                };
-              })
-              .filter(function(u) { return u.Id !== 0 && u.Title && u.Title !== 'Unknown User'; });
-            console.log('Parsed search users:', searchUsers);
-            var availableSearchUsers = searchUsers.filter(function(u) {
-              return !_this.state.form.Owners.some(function(selected) { return selected.Id === u.Id; });
-            });
-            _this.setState({
-              searchResults: availableSearchUsers,
-              isLoadingUsers: false,
-              showDropdown: availableSearchUsers.length > 0,
-              isFallbackMode: true
-            });
-            if (availableSearchUsers.length === 0) {
-              _this.props.addNotification('No matching users found in tenant.', 'warning');
-            }
-          }).fail(function(xhr, status, error) {
-            if (!_this._isMounted) return;
-            console.error('Search API error:', error, xhr.responseText);
-            _this.props.addNotification('Failed to search users: ' + (xhr.responseText || error), 'error');
-            _this.setState({ isLoadingUsers: false, showDropdown: false, isFallbackMode: false });
-          });
+          _this.setState({ isLoadingUsers: false, showDropdown: false });
         });
       }, 300);
     }
@@ -528,7 +507,7 @@ class EditModal extends React.Component {
                   type: 'text',
                   value: this.state.searchTerm,
                   onChange: function(e) { _this.setState({ searchTerm: e.target.value }); },
-                  placeholder: 'Search for users by name or email...',
+                  placeholder: 'Search for site users by name or email...',
                   className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
                   'aria-label': 'Search for users'
                 }),
@@ -597,7 +576,7 @@ class EditModal extends React.Component {
                 className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
                 'aria-label': 'Survey status'
               },
-                React.createElement('option', { value: 'Publish' }, 'Publish'),
+                React.createElement('option', { value: 'Published' }, 'Published'),
                 React.createElement('option', { value: 'Draft' }, 'Draft')
               )
             )
@@ -636,32 +615,38 @@ class EditModal extends React.Component {
 // Placeholder components for pages
 class FormFillerComponent extends React.Component {
   render() {
+    const params = new URLSearchParams(window.location.search);
+    const surveyId = params.get('surveyId');
     return React.createElement('div', { className: 'p-4' },
-      React.createElement('h1', { className: 'text-2xl font-bold' }, 'formfiller'),
-      React.createElement('p', null, 'This is the formfiller page.')
+      React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Filler'),
+      React.createElement('p', null, 'Filling survey ID: ' + (surveyId || 'N/A'))
     );
   }
 }
 
 class BuilderComponent extends React.Component {
   render() {
+    const params = new URLSearchParams(window.location.search);
+    const surveyId = params.get('surveyId');
     return React.createElement('div', { className: 'p-4' },
-      React.createElement('h1', { className: 'text-2xl font-bold' }, 'builder'),
-      React.createElement('p', null, 'This is the builder page for creating/editing surveys.')
+      React.createElement('h1', { className: 'text-2xl font-bold' }, 'Survey Builder'),
+      React.createElement('p', null, 'Editing survey ID: ' + (surveyId || 'N/A'))
     );
   }
 }
 
 class ResponseComponent extends React.Component {
   render() {
+    const params = new URLSearchParams(window.location.search);
+    const surveyId = params.get('surveyId');
     return React.createElement('div', { className: 'p-4' },
-      React.createElement('h1', { className: 'text-2xl font-bold' }, 'response'),
-      React.createElement('p', null, 'This is the response page for viewing survey responses.')
+      React.createElement('h1', { className: 'text-2xl font-bold' }, 'Survey Responses'),
+      React.createElement('p', null, 'Viewing responses for survey ID: ' + (surveyId || 'N/A'))
     );
   }
 }
 
-// Main App component with filters and delete functionality
+// Main App component
 class App extends React.Component {
   constructor(props) {
     super(props);
@@ -683,7 +668,6 @@ class App extends React.Component {
   }
   componentDidMount() {
     var _this = this;
-    // Load current user
     jQuery.ajax({
       url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/currentuser',
       headers: { 'Accept': 'application/json; odata=verbose' },
@@ -697,9 +681,7 @@ class App extends React.Component {
       console.error('Error loading current user:', error);
       _this.addNotification('Failed to load user information: ' + (xhr.responseText || error), 'error');
     });
-    // Load surveys
     this.loadSurveys();
-    // Handle page navigation
     window.addEventListener('popstate', function() {
       _this.setState({ currentPage: window.location.pathname });
     });
@@ -712,7 +694,26 @@ class App extends React.Component {
       xhrFields: { withCredentials: true }
     }).done(function(data) {
       var surveys = data.d.results;
-      _this.setState({ surveys: surveys, filteredSurveys: surveys });
+      // Fetch response counts for each survey
+      Promise.all(surveys.map(function(survey) {
+        return jQuery.ajax({
+          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Survey Responses\')/items?$filter=SurveyId eq ' + survey.Id + '&$count=true',
+          headers: { 'Accept': 'application/json; odata=verbose' },
+          xhrFields: { withCredentials: true }
+        }).then(function(responseData) {
+          survey.responseCount = responseData.d.__count || 0;
+          return survey;
+        }).catch(function(error) {
+          console.error('Error fetching responses for survey ' + survey.Id + ':', error);
+          survey.responseCount = 0;
+          return survey;
+        });
+      })).then(function(updatedSurveys) {
+        _this.setState({ surveys: updatedSurveys, filteredSurveys: updatedSurveys });
+      }).catch(function(error) {
+        console.error('Error processing response counts:', error);
+        _this.addNotification('Failed to load response counts.', 'error');
+      });
     }).fail(function(xhr, status, error) {
       console.error('Error loading surveys:', error);
       _this.addNotification('Failed to load surveys: ' + (xhr.responseText || error), 'error');
@@ -761,27 +762,25 @@ class App extends React.Component {
   }
   handleFilter({ searchTerm, status }) {
     var filtered = this.state.surveys;
-    // Apply search filter
     if (searchTerm) {
       searchTerm = searchTerm.toLowerCase();
       filtered = filtered.filter(function(survey) {
         return survey.Title.toLowerCase().includes(searchTerm);
       });
     }
-    // Apply status filter
     var today = new Date();
     today.setHours(0, 0, 0, 0);
     if (status !== 'All') {
       filtered = filtered.filter(function(survey) {
         var startDate = survey.StartDate ? new Date(survey.StartDate) : null;
         var endDate = survey.EndDate ? new Date(survey.EndDate) : null;
-        if (status === 'Published') return survey.Status === 'Publish';
+        if (status === 'Published') return survey.Status === 'Published';
         if (status === 'Draft') return survey.Status === 'Draft';
         if (status === 'Upcoming') return startDate && startDate > today;
         if (status === 'Running') {
           return startDate && endDate &&
                  startDate <= today && endDate >= today &&
-                 survey.Status === 'Publish';
+                 survey.Status === 'Published';
         }
         return true;
       });
@@ -808,7 +807,8 @@ class App extends React.Component {
               currentUserId: _this.state.currentUserId,
               onEditMetadata: function() { _this.setState({ editingSurvey: survey }); },
               onViewQR: function() { _this.setState({ viewingQR: survey }); },
-              onDelete: function() { _this.setState({ deletingSurvey: survey }); }
+              onDelete: function() { _this.setState({ deletingSurvey: survey }); },
+              addNotification: _this.addNotification.bind(_this)
             });
           })
         )
@@ -836,6 +836,7 @@ class App extends React.Component {
       }),
       this.state.viewingQR && React.createElement(QRModal, {
         survey: this.state.viewingQR,
+        addNotification: this.addNotification.bind(this),
         onClose: function() { _this.setState({ viewingQR: null }); }
       }),
       this.state.deletingSurvey && React.createElement(DeleteModal, {
