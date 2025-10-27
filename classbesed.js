@@ -95,7 +95,7 @@ class SideNav extends React.Component {
   }
 }
 
-// SurveyCard component with header, footer, chips, responses, dates, status
+// SurveyCard component with header, footer, chips for owners and responses
 class SurveyCard extends React.Component {
   render() {
     const startDate = this.props.survey.StartDate ? new Date(this.props.survey.StartDate).toLocaleDateString('en-US') : 'N/A';
@@ -122,8 +122,10 @@ class SurveyCard extends React.Component {
         React.createElement('p', { className: 'text-gray-600 mb-2' },
           'Date Range: ' + startDate + ' - ' + endDate
         ),
-        React.createElement('p', { className: 'text-gray-600 mb-2' },
-          'Responses: ' + (this.props.survey.responseCount || 0)
+        React.createElement('div', { className: 'flex flex-wrap gap-2 mb-2' },
+          React.createElement('div', {
+            className: 'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'
+          }, 'Responses: ' + (this.props.survey.responseCount || 0))
         ),
         React.createElement('div', { className: 'flex flex-wrap gap-2' },
           this.props.survey.Owners?.results?.length > 0
@@ -694,7 +696,6 @@ class App extends React.Component {
       xhrFields: { withCredentials: true }
     }).done(function(data) {
       var surveys = data.d.results;
-      // Fetch response counts for each survey
       Promise.all(surveys.map(function(survey) {
         return jQuery.ajax({
           url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Survey Responses\')/items?$filter=SurveyId eq ' + survey.Id + '&$count=true',
@@ -798,7 +799,14 @@ class App extends React.Component {
       content = React.createElement(ResponseComponent);
     } else {
       content = React.createElement('div', { className: 'p-4' },
-        React.createElement('h1', { className: 'text-2xl font-bold mb-4' }, 'Surveys'),
+        React.createElement('div', { className: 'flex justify-between items-center mb-4' },
+          React.createElement('h1', { className: 'text-2xl font-bold' }, 'Surveys'),
+          React.createElement('button', {
+            className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition',
+            onClick: function() { window.location.href = '/builder?surveyId=new'; },
+            'aria-label': 'Create new survey'
+          }, 'Create New Form')
+        ),
         React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4' },
           this.state.filteredSurveys.map(function(survey) {
             return React.createElement(SurveyCard, {
