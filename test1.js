@@ -1,7 +1,6 @@
 // app.js
 if (typeof window.SP !== 'undefined' && window.SP.SOD) {
   window.SP.SOD.executeFunc('sp.js', 'SP.ClientContext', function() {
-    // Ensure dependencies are loaded
     if (!window.React || !window.ReactDOM || !window.jQuery || !window.QRious) {
       console.error('Required libraries (React, ReactDOM, jQuery, QRious) not loaded.');
       return;
@@ -55,20 +54,24 @@ if (typeof window.SP !== 'undefined' && window.SP.SOD) {
           React.createElement('div', { className: 'flex-1' },
             React.createElement('h2', { className: 'text-lg font-bold' }, this.props.survey.Title),
             React.createElement('p', { className: 'text-gray-600' }, this.props.survey.Description),
-            React.createElement('div', { className: 'mt-2 flex flex-wrap gap-2' },
-              this.props.survey.Owners && this.props.survey.Owners.results && this.props.survey.Owners.results.length > 0
-                ? this.props.survey.Owners.results.map(function(owner) {
-                    return React.createElement('span', {
-                      key: owner.Id,
-                      className: 'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm',
-                      'aria-label': 'Owner: ' + owner.Title
-                    }, owner.Title);
-                  })
-                : React.createElement('p', { className: 'text-gray-500 text-sm' }, 'No owners assigned'),
-              React.createElement('span', {
-                className: 'bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm',
-                'aria-label': 'Response count: ' + (this.props.survey.responseCount != null ? this.props.survey.responseCount : 'Error')
-              }, 'Responses: ' + (this.props.survey.responseCount != null ? this.props.survey.responseCount : 'Error'))
+            React.createElement('div', { className: 'mt-2 space-y-2' },
+              React.createElement('div', { className: 'flex flex-wrap gap-2' },
+                this.props.survey.Owners && this.props.survey.Owners.results && this.props.survey.Owners.results.length > 0
+                  ? this.props.survey.Owners.results.map(function(owner) {
+                      return React.createElement('span', {
+                        key: owner.Id,
+                        className: 'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm',
+                        'aria-label': 'Owner: ' + owner.Title
+                      }, owner.Title);
+                    })
+                  : React.createElement('p', { className: 'text-gray-500 text-sm' }, 'No owners assigned')
+              ),
+              React.createElement('div', null,
+                React.createElement('span', {
+                  className: 'bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm',
+                  'aria-label': 'Response count: ' + (this.props.survey.responseCount != null ? this.props.survey.responseCount : 'Error')
+                }, 'Responses: ' + (this.props.survey.responseCount != null ? this.props.survey.responseCount : 'Error'))
+              )
             ),
             React.createElement('p', null, 'Status: ' + this.props.survey.Status),
             React.createElement('p', null, 'Dates: ' + this.formatDate(this.props.survey.StartDate) + ' - ' + this.formatDate(this.props.survey.EndDate))
@@ -141,17 +144,17 @@ if (typeof window.SP !== 'undefined' && window.SP.SOD) {
       render() {
         var _this = this;
         return React.createElement('div', {
-          className: 'fixed inset-0 flex items-center justify-center z-50 bg-black/50' // 50% transparent background
+          className: 'fixed inset-0 flex items-center justify-center z-1000 bg-black/50'
         },
           React.createElement('div', {
-            className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl' // Responsive width
+            className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl'
           },
             React.createElement('div', {
-              className: 'flex justify-between items-center p-4 border-b bg-gray-100' // Header styling
+              className: 'flex justify-between items-center p-4 border-b bg-gray-100'
             },
               React.createElement('h2', {
-                className: 'text-lg font-bold text-gray-800 truncate', // Survey title, prevent overflow
-                title: this.props.surveyTitle // Full title on hover
+                className: 'text-lg font-bold text-gray-800 truncate',
+                title: this.props.surveyTitle
               }, this.props.surveyTitle || 'Survey QR Code'),
               React.createElement('button', {
                 type: 'button',
@@ -161,15 +164,15 @@ if (typeof window.SP !== 'undefined' && window.SP.SOD) {
               }, '\u00D7')
             ),
             React.createElement('div', {
-              className: 'p-6 flex justify-center items-center' // Center QR code
+              className: 'p-6 flex justify-center items-center'
             },
               React.createElement('canvas', {
                 ref: function(el) { _this.refs = _this.refs || {}; _this.refs.qrCanvas = el; },
-                className: 'max-w-full h-auto' // Ensure canvas is responsive
+                className: 'max-w-full h-auto'
               })
             ),
             React.createElement('div', {
-              className: 'flex flex-wrap gap-3 justify-end p-4 border-t bg-gray-50' // Footer styling
+              className: 'flex flex-wrap gap-3 justify-end p-4 border-t bg-gray-50'
             },
               React.createElement('button', {
                 type: 'button',
@@ -357,7 +360,7 @@ if (typeof window.SP !== 'undefined' && window.SP.SOD) {
       }
       render() {
         var _this = this;
-        return React.createElement('div', { className: 'fixed inset-0 flex items-center justify-center z-50' },
+        return React.createElement('div', { className: 'fixed inset-0 flex items-center justify-center z-1000' },
           React.createElement('div', { className: 'bg-white rounded-lg shadow-xl w-full max-w-md' },
             React.createElement('div', { className: 'flex justify-between items-center p-4 border-b' },
               React.createElement('h2', { className: 'text-lg font-bold' }, 'Edit Metadata'),
@@ -492,7 +495,8 @@ if (typeof window.SP !== 'undefined' && window.SP.SOD) {
           isLoadingUser: true,
           isLoadingSurveys: false,
           notifications: [],
-          userLoaded: false
+          userLoaded: false,
+          isSideNavOpen: false
         };
         this.addNotification = this.addNotification.bind(this);
         this.loadCurrentUser = this.loadCurrentUser.bind(this);
@@ -500,10 +504,10 @@ if (typeof window.SP !== 'undefined' && window.SP.SOD) {
         this.fetchUserDetails = this.fetchUserDetails.bind(this);
         this.loadSurveys = this.loadSurveys.bind(this);
         this.applyFilters = this.applyFilters.bind(this);
+        this.toggleSideNav = this.toggleSideNav.bind(this);
       }
       componentDidMount() {
         this._isMounted = true;
-        console.log('componentDidMount: Starting user load...');
         if (!window._spPageContextInfo) {
           console.error('componentDidMount: _spPageContextInfo is undefined');
           this.addNotification('SharePoint page context unavailable. Ensure this is a SharePoint page.', 'error');
@@ -727,6 +731,9 @@ if (typeof window.SP !== 'undefined' && window.SP.SOD) {
 
         return matchesSearch && matchesDate;
       }
+      toggleSideNav() {
+        this.setState({ isSideNavOpen: !this.state.isSideNavOpen });
+      }
       render() {
         var _this = this;
         if (this.state.isLoadingUser) {
@@ -735,71 +742,122 @@ if (typeof window.SP !== 'undefined' && window.SP.SOD) {
           );
         }
         var filteredSurveys = this.state.surveys.filter(this.applyFilters.bind(this));
-        return React.createElement('div', { className: 'flex flex-col h-screen p-4' },
-          React.createElement('div', { className: 'fixed top-4 right-4 z-60 space-y-2' },
-            this.state.notifications.map(function(n) {
-              return React.createElement(Notification, {
-                key: n.id,
-                message: n.message,
-                type: n.type,
-                onClose: function() { _this.setState({ notifications: _this.state.notifications.filter(function(notification) { return notification.id !== n.id; }) }); }
-              });
-            })
-          ),
-          React.createElement('div', { className: 'flex flex-col mb-4' },
-            React.createElement('div', { className: 'flex justify-between items-center mb-2' },
-              React.createElement('input', {
-                type: 'text',
-                placeholder: 'Search surveys...',
-                className: 'w-1/2 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
-                onChange: function(e) { _this.setState({ filters: Object.assign({}, _this.state.filters, { search: e.target.value }) }); },
-                'aria-label': 'Search surveys'
+        return React.createElement('div', { className: 'flex flex-col h-screen' },
+          // TopNav
+          React.createElement('header', {
+            className: 'fixed top-0 left-0 right-0 bg-blue-600 text-white p-4 flex justify-between items-center z-50'
+          },
+            React.createElement('div', { className: 'flex items-center' },
+              React.createElement('img', {
+                src: '/SiteAssets/logo.png', // Replace with actual logo path
+                alt: 'Dashboard Logo',
+                className: 'h-8 w-8 mr-2'
               }),
+              React.createElement('h1', { className: 'text-xl font-bold' }, 'Survey Dashboard')
+            ),
+            React.createElement('div', { className: 'flex items-center' },
+              React.createElement('span', { className: 'mr-4' }, this.state.currentUser?.get_title() || 'Guest User'),
               React.createElement('button', {
                 type: 'button',
-                onClick: function() { window.open('builder.aspx', '_blank'); },
-                className: 'bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600',
-                'aria-label': 'Create new survey form'
-              }, 'Create New Form')
-            ),
-            React.createElement('div', { className: 'flex gap-2' },
-              ['all', 'upcoming', 'past', 'running'].map(function(filter) {
-                return React.createElement('button', {
-                  key: filter,
-                  type: 'button',
-                  className: 'px-3 py-1 rounded ' + (_this.state.filters.dateFilter === filter ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'),
-                  onClick: function() { _this.setState({ filters: Object.assign({}, _this.state.filters, { dateFilter: filter }) }); },
-                  'aria-label': 'Filter by ' + filter
-                }, filter.charAt(0).toUpperCase() + filter.slice(1));
-              })
-            )
-          ),
-          this.state.isLoadingSurveys
-            ? React.createElement('div', { className: 'flex items-center justify-center h-full' },
-                React.createElement('div', { className: 'animate-spin rounded-full h-12 w-12 border-t-4 border-blue-500 mr-4' }),
-                React.createElement('span', null, 'Loading surveys...')
-              )
-            : filteredSurveys.length === 0
-              ? React.createElement('div', { className: 'flex items-center justify-center h-full' },
-                  React.createElement('span', { className: 'text-gray-500' }, 'No surveys available')
-                )
-              : React.createElement('div', { className: 'grid grid-cols-1 lg:grid-cols-2 gap-4' },
-                  filteredSurveys.map(function(survey) {
-                    return React.createElement(SurveyCard, {
-                      key: survey.Id,
-                      survey: survey,
-                      userRole: _this.state.userRole,
-                      currentUserId: _this.state.currentUser && (_this.state.currentUser.get_id ? _this.state.currentUser.get_id() : _this.state.currentUser.Id),
-                      addNotification: _this.addNotification.bind(_this),
-                      loadSurveys: _this.loadSurveys.bind(_this)
-                    });
+                className: 'md:hidden p-2 rounded hover:bg-blue-700',
+                onClick: this.toggleSideNav,
+                'aria-label': 'Toggle side navigation'
+              },
+                React.createElement('svg', {
+                  className: 'w-6 h-6',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  viewBox: '0 0 24 24',
+                  xmlns: 'http://www.w3.org/2000/svg'
+                },
+                  React.createElement('path', {
+                    strokeLinecap: 'round',
+                    strokeLinejoin: 'round',
+                    strokeWidth: '2',
+                    d: 'M4 6h16M4 12h16m-7 6h7'
                   })
                 )
+              )
+            )
+          ),
+          // Main content with SideNav
+          React.createElement('div', { className: 'flex flex-1 pt-16' }, // pt-16 to offset TopNav
+            // SideNav
+            React.createElement('nav', {
+              className: 'fixed top-16 bottom-0 bg-gray-800 text-white w-64 p-4 space-y-4 overflow-y-auto transition-transform duration-300 ' +
+                (this.state.isSideNavOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0')
+            },
+              React.createElement('div', null,
+                React.createElement('input', {
+                  type: 'text',
+                  placeholder: 'Search surveys...',
+                  className: 'w-full p-2 border rounded bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500',
+                  onChange: function(e) { _this.setState({ filters: Object.assign({}, _this.state.filters, { search: e.target.value }) }); },
+                  'aria-label': 'Search surveys'
+                })
+              ),
+              React.createElement('div', { className: 'space-y-2' },
+                ['all', 'upcoming', 'past', 'running'].map(function(filter) {
+                  return React.createElement('button', {
+                    key: filter,
+                    type: 'button',
+                    className: 'w-full text-left px-3 py-2 rounded ' +
+                      (_this.state.filters.dateFilter === filter ? 'bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600'),
+                    onClick: function() { _this.setState({ filters: Object.assign({}, _this.state.filters, { dateFilter: filter }) }); },
+                    'aria-label': 'Filter by ' + filter
+                  }, filter.charAt(0).toUpperCase() + filter.slice(1));
+                })
+              )
+            ),
+            // Content
+            React.createElement('main', {
+              className: 'flex-1 p-4 ml-0 md:ml-64 transition-all duration-300'
+            },
+              React.createElement('div', { className: 'fixed top-20 right-4 z-60 space-y-2' },
+                this.state.notifications.map(function(n) {
+                  return React.createElement(Notification, {
+                    key: n.id,
+                    message: n.message,
+                    type: n.type,
+                    onClose: function() { _this.setState({ notifications: _this.state.notifications.filter(function(notification) { return notification.id !== n.id; }) }); }
+                  });
+                })
+              ),
+              React.createElement('div', { className: 'mb-4' },
+                React.createElement('button', {
+                  type: 'button',
+                  onClick: function() { window.open('builder.aspx', '_blank'); },
+                  className: 'bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600',
+                  'aria-label': 'Create new survey form'
+                }, 'Create New Form')
+              ),
+              this.state.isLoadingSurveys
+                ? React.createElement('div', { className: 'flex items-center justify-center h-full' },
+                    React.createElement('div', { className: 'animate-spin rounded-full h-12 w-12 border-t-4 border-blue-500 mr-4' }),
+                    React.createElement('span', null, 'Loading surveys...')
+                  )
+                : filteredSurveys.length === 0
+                  ? React.createElement('div', { className: 'flex items-center justify-center h-full' },
+                      React.createElement('span', { className: 'text-gray-500' }, 'No surveys available')
+                    )
+                  : React.createElement('div', { className: 'grid grid-cols-1 lg:grid-cols-2 gap-4' },
+                      filteredSurveys.map(function(survey) {
+                        return React.createElement(SurveyCard, {
+                          key: survey.Id,
+                          survey: survey,
+                          userRole: _this.state.userRole,
+                          currentUserId: _this.state.currentUser && (_this.state.currentUser.get_id ? _this.state.currentUser.get_id() : _this.state.currentUser.Id),
+                          addNotification: _this.addNotification.bind(_this),
+                          loadSurveys: _this.loadSurveys.bind(_this)
+                        });
+                      })
+                    )
+            )
+          )
         );
       }
     }
 
-    // Ensure root element exists
     var rootElement = document.getElementById('root');
     if (!rootElement) {
       console.error('Root element with ID "root" not found.');
