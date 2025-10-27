@@ -36,7 +36,7 @@ class TopNav extends React.Component {
   }
 }
 
-// SideNav component with filters only (no navigation links)
+// SideNav component with filters only, darker background
 class SideNav extends React.Component {
   constructor(props) {
     super(props);
@@ -49,7 +49,7 @@ class SideNav extends React.Component {
   render() {
     var _this = this;
     return React.createElement('div', {
-      className: 'bg-gray-200 w-64 h-screen fixed md:static md:block ' + (this.state.isOpen ? 'block' : 'hidden')
+      className: 'bg-gray-800 text-white w-64 h-screen fixed md:static md:block ' + (this.state.isOpen ? 'block' : 'hidden')
     },
       React.createElement('button', {
         className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2',
@@ -66,7 +66,7 @@ class SideNav extends React.Component {
               _this.setState({ searchTerm: e.target.value });
               _this.props.onFilter({ searchTerm: e.target.value, status: _this.state.selectedFilter });
             },
-            className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
+            className: 'w-full p-2 border rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500',
             'aria-label': 'Search surveys'
           })
         ),
@@ -75,8 +75,8 @@ class SideNav extends React.Component {
           ['All', 'Published', 'Draft', 'Upcoming', 'Running'].map(function(filter) {
             return React.createElement('li', { key: filter },
               React.createElement('button', {
-                className: 'w-full text-left p-2 hover:bg-blue-100 rounded ' +
-                  (_this.state.selectedFilter === filter ? 'bg-blue-100 font-semibold' : ''),
+                className: 'w-full text-left p-2 hover:bg-gray-700 rounded ' +
+                  (_this.state.selectedFilter === filter ? 'bg-gray-700 font-semibold' : ''),
                 onClick: function() {
                   _this.setState({ selectedFilter: filter });
                   _this.props.onFilter({ searchTerm: _this.state.searchTerm, status: filter });
@@ -90,7 +90,7 @@ class SideNav extends React.Component {
   }
 }
 
-// SurveyCard component with links to builder, response, formfiller
+// SurveyCard component with restored buttons and conditional Delete
 class SurveyCard extends React.Component {
   render() {
     return React.createElement('div', {
@@ -102,24 +102,76 @@ class SurveyCard extends React.Component {
         React.createElement('button', {
           className: 'bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600',
           onClick: function() { window.location.href = '/builder?surveyId=' + this.props.survey.Id; }.bind(this),
-          'aria-label': 'Edit survey in builder'
-        }, 'Builder'),
+          'aria-label': 'Edit survey form'
+        }, 'Edit Form'),
         React.createElement('button', {
           className: 'bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600',
           onClick: function() { window.location.href = '/response?surveyId=' + this.props.survey.Id; }.bind(this),
-          'aria-label': 'View survey responses'
-        }, 'Response'),
+          'aria-label': 'View survey report'
+        }, 'View Report'),
         React.createElement('button', {
           className: 'bg-purple-500 text-white px-3 py-1 rounded hover:bg-purple-600',
-          onClick: function() { window.location.href = '/formfiller?surveyId=' + this.props.survey.Id; }.bind(this),
-          'aria-label': 'Fill survey'
-        }, 'Formfiller'),
+          onClick: this.props.onViewQR,
+          'aria-label': 'View QR code'
+        }, 'QR Code'),
         React.createElement('button', {
-          className: 'bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600' + (this.props.survey.AuthorId === this.props.currentUserId ? '' : ' opacity-50 cursor-not-allowed'),
+          className: 'bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600',
+          onClick: this.props.onEditMetadata,
+          'aria-label': 'Edit survey metadata'
+        }, 'Edit Metadata'),
+        React.createElement('button', {
+          className: 'bg-indigo-500 text-white px-3 py-1 rounded hover:bg-indigo-600',
+          onClick: function() { window.location.href = '/formfiller?surveyId=' + this.props.survey.Id; }.bind(this),
+          'aria-label': 'Fill survey form'
+        }, 'Fill Form'),
+        this.props.survey.AuthorId === this.props.currentUserId && React.createElement('button', {
+          className: 'bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600',
           onClick: this.props.onDelete,
-          disabled: this.props.survey.AuthorId !== this.props.currentUserId,
           'aria-label': 'Delete survey'
         }, 'Delete')
+      )
+    );
+  }
+}
+
+// QRModal component
+class QRModal extends React.Component {
+  componentDidMount() {
+    var qr = new QRious({
+      element: document.getElementById('qr-' + this.props.survey.Id),
+      value: window._spPageContextInfo.webAbsoluteUrl + '/formfiller?surveyId=' + this.props.survey.Id,
+      size: 200
+    });
+  }
+  render() {
+    return React.createElement('div', {
+      className: 'fixed inset-0 flex items-center justify-center z-1000 bg-black/50'
+    },
+      React.createElement('div', {
+        className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl'
+      },
+        React.createElement('div', {
+          className: 'flex justify-between items-center p-4 border-b bg-gray-100'
+        },
+          React.createElement('h2', { className: 'text-lg font-bold' }, 'QR Code'),
+          React.createElement('button', {
+            type: 'button',
+            className: 'text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full w-8 h-8 flex items-center justify-center',
+            onClick: this.props.onClose,
+            'aria-label': 'Close QR modal'
+          }, '\u00D7')
+        ),
+        React.createElement('div', { className: 'p-6 flex justify-center' },
+          React.createElement('canvas', { id: 'qr-' + this.props.survey.Id })
+        ),
+        React.createElement('div', { className: 'p-4 border-t bg-gray-50 flex justify-end gap-3' },
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 transition',
+            onClick: this.props.onClose,
+            'aria-label': 'Close QR modal'
+          }, 'Close')
+        )
       )
     );
   }
@@ -352,7 +404,7 @@ class EditModal extends React.Component {
       form: Object.assign({}, this.state.form, {
         Owners: this.state.form.Owners.filter(function(o) { return o.Id !== userId; })
       })
-    );
+    });
   }
   handleSave() {
     var _this = this;
@@ -620,6 +672,7 @@ class App extends React.Component {
       currentUserName: null,
       notifications: [],
       editingSurvey: null,
+      viewingQR: null,
       deletingSurvey: null,
       currentPage: window.location.pathname
     };
@@ -753,6 +806,8 @@ class App extends React.Component {
               key: survey.Id,
               survey: survey,
               currentUserId: _this.state.currentUserId,
+              onEditMetadata: function() { _this.setState({ editingSurvey: survey }); },
+              onViewQR: function() { _this.setState({ viewingQR: survey }); },
               onDelete: function() { _this.setState({ deletingSurvey: survey }); }
             });
           })
@@ -778,6 +833,10 @@ class App extends React.Component {
         addNotification: this.addNotification.bind(this),
         loadSurveys: this.loadSurveys.bind(this),
         onClose: function() { _this.setState({ editingSurvey: null }); }
+      }),
+      this.state.viewingQR && React.createElement(QRModal, {
+        survey: this.state.viewingQR,
+        onClose: function() { _this.setState({ viewingQR: null }); }
       }),
       this.state.deletingSurvey && React.createElement(DeleteModal, {
         survey: this.state.deletingSurvey,
