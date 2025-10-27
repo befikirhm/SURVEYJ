@@ -22,7 +22,7 @@ class Notification extends React.Component {
   }
 }
 
-// TopNav component with logo
+// TopNav component with logo and "Forms"
 class TopNav extends React.Component {
   render() {
     return React.createElement('nav', {
@@ -31,10 +31,10 @@ class TopNav extends React.Component {
       React.createElement('div', { className: 'flex items-center' },
         React.createElement('img', {
           src: '/SiteAssets/logo.png', // Replace with actual logo URL
-          alt: 'Survey Dashboard Logo',
+          alt: 'Forms Logo',
           className: 'h-8 mr-2'
         }),
-        React.createElement('div', { className: 'text-lg font-bold' }, 'Survey Dashboard')
+        React.createElement('div', { className: 'text-lg font-bold' }, 'Forms')
       ),
       React.createElement('div', null,
         React.createElement('span', { className: 'mr-4' }, 'Welcome, ' + this.props.currentUserName)
@@ -66,14 +66,14 @@ class SideNav extends React.Component {
         React.createElement('div', { className: 'mb-4' },
           React.createElement('input', {
             type: 'text',
-            placeholder: 'Search surveys...',
+            placeholder: 'Search forms...',
             value: this.state.searchTerm,
             onChange: function(e) {
               _this.setState({ searchTerm: e.target.value });
               _this.props.onFilter({ searchTerm: e.target.value, status: _this.state.selectedFilter });
             },
             className: 'w-full p-2 border rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500',
-            'aria-label': 'Search surveys'
+            'aria-label': 'Search forms'
           })
         ),
         React.createElement('ul', { className: 'space-y-2' },
@@ -145,12 +145,12 @@ class SurveyCard extends React.Component {
         React.createElement('button', {
           className: 'bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600',
           onClick: function() { window.location.href = '/builder?surveyId=' + this.props.survey.Id; }.bind(this),
-          'aria-label': 'Edit survey form'
+          'aria-label': 'Edit form'
         }, 'Edit Form'),
         React.createElement('button', {
           className: 'bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600',
           onClick: function() { window.location.href = '/response?surveyId=' + this.props.survey.Id; }.bind(this),
-          'aria-label': 'View survey report'
+          'aria-label': 'View form report'
         }, 'View Report'),
         React.createElement('button', {
           className: 'bg-purple-500 text-white px-3 py-1 rounded hover:bg-purple-600',
@@ -160,17 +160,17 @@ class SurveyCard extends React.Component {
         React.createElement('button', {
           className: 'bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600',
           onClick: this.props.onEditMetadata,
-          'aria-label': 'Edit survey metadata'
+          'aria-label': 'Edit form metadata'
         }, 'Edit Metadata'),
         React.createElement('button', {
           className: 'bg-indigo-500 text-white px-3 py-1 rounded hover:bg-indigo-600',
           onClick: function() { window.location.href = '/formfiller?surveyId=' + this.props.survey.Id; }.bind(this),
-          'aria-label': 'Fill survey form'
+          'aria-label': 'Fill form'
         }, 'Fill Form'),
         this.props.survey.AuthorId === this.props.currentUserId && React.createElement('button', {
           className: 'bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600',
           onClick: this.props.onDelete,
-          'aria-label': 'Delete survey'
+          'aria-label': 'Delete form'
         }, 'Delete')
       )
     );
@@ -272,7 +272,7 @@ class DeleteModal extends React.Component {
         ),
         React.createElement('div', { className: 'p-6' },
           React.createElement('p', { className: 'text-gray-600' },
-            'Are you sure you want to delete the survey "' + this.props.survey.Title + '"? This action cannot be undone.'
+            'Are you sure you want to delete the form "' + this.props.survey.Title + '"? This action cannot be undone.'
           )
         ),
         React.createElement('div', { className: 'p-4 border-t bg-gray-50 flex justify-end gap-3' },
@@ -396,7 +396,7 @@ class EditModal extends React.Component {
       return;
     }
     if (!this.state.form.Owners.some(function(o) { return o.Id === _this.props.currentUserId; })) {
-      this.props.addNotification('You must remain an owner of the survey.', 'error');
+      this.props.addNotification('You must remain an owner of the form.', 'error');
       return;
     }
     this.setState({ isSaving: true });
@@ -408,7 +408,7 @@ class EditModal extends React.Component {
       };
       if (_this.state.form.StartDate) payload.StartDate = new Date(_this.state.form.StartDate).toISOString();
       if (_this.state.form.EndDate) payload.EndDate = new Date(_this.state.form.EndDate).toISOString();
-      console.log('Saving metadata for survey:', _this.props.survey.Id, payload);
+      console.log('Saving metadata for form:', _this.props.survey.Id, payload);
       jQuery.ajax({
         url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + _this.props.survey.Id + ')',
         type: 'POST',
@@ -454,25 +454,25 @@ class EditModal extends React.Component {
             }
           });
         } else {
-          _this.props.addNotification('Survey metadata updated. Permissions not modified due to insufficient access.', 'warning');
+          _this.props.addNotification('Form metadata updated. Permissions not modified due to insufficient access.', 'warning');
         }
       }).then(function() {
-        _this.props.addNotification('Survey metadata and permissions updated successfully!');
-        console.log('Metadata save successful for survey:', _this.props.survey.Id);
+        _this.props.addNotification('Form metadata and permissions updated successfully!');
+        console.log('Metadata save successful for form:', _this.props.survey.Id);
         _this.props.loadSurveys();
         _this.props.onClose();
         _this.setState({ isSaving: false });
       }).fail(function(error) {
-        console.error('Error updating survey:', error);
+        console.error('Error updating form:', error);
         var errorMessage = error.responseText || error.message || 'Unknown error';
-        if (error.status === 403) errorMessage = 'Access denied. Ensure you have Manage Permissions on this survey.';
+        if (error.status === 403) errorMessage = 'Access denied. Ensure you have Manage Permissions on this form.';
         else if (errorMessage.includes('Invalid Form Digest')) errorMessage = 'Invalid or expired request digest token. Please try again.';
-        _this.props.addNotification('Failed to update survey: ' + errorMessage, 'error');
+        _this.props.addNotification('Failed to update form: ' + errorMessage, 'error');
         _this.setState({ isSaving: false });
       });
     }).fail(function(error) {
       console.error('Error getting digest:', error);
-      _this.props.addNotification('Failed to update survey: Unable to get request digest.', 'error');
+      _this.props.addNotification('Failed to update form: Unable to get request digest.', 'error');
       _this.setState({ isSaving: false });
     });
   }
@@ -576,7 +576,7 @@ class EditModal extends React.Component {
                 value: this.state.form.Status,
                 onChange: function(e) { _this.setState({ form: Object.assign({}, _this.state.form, { Status: e.target.value }) }); },
                 className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
-                'aria-label': 'Survey status'
+                'aria-label': 'Form status'
               },
                 React.createElement('option', { value: 'Published' }, 'Published'),
                 React.createElement('option', { value: 'Draft' }, 'Draft')
@@ -614,14 +614,14 @@ class EditModal extends React.Component {
   }
 }
 
-// Placeholder components for pages
+// Placeholder components for ASPX pages
 class FormFillerComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
     return React.createElement('div', { className: 'p-4' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Filler'),
-      React.createElement('p', null, 'Filling survey ID: ' + (surveyId || 'N/A'))
+      React.createElement('p', null, 'Filling form ID: ' + (surveyId || 'N/A'))
     );
   }
 }
@@ -631,8 +631,8 @@ class BuilderComponent extends React.Component {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
     return React.createElement('div', { className: 'p-4' },
-      React.createElement('h1', { className: 'text-2xl font-bold' }, 'Survey Builder'),
-      React.createElement('p', null, 'Editing survey ID: ' + (surveyId || 'N/A'))
+      React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Builder'),
+      React.createElement('p', null, surveyId ? 'Editing form ID: ' + surveyId : 'Creating new form')
     );
   }
 }
@@ -642,8 +642,8 @@ class ResponseComponent extends React.Component {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
     return React.createElement('div', { className: 'p-4' },
-      React.createElement('h1', { className: 'text-2xl font-bold' }, 'Survey Responses'),
-      React.createElement('p', null, 'Viewing responses for survey ID: ' + (surveyId || 'N/A'))
+      React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Responses'),
+      React.createElement('p', null, 'Viewing responses for form ID: ' + (surveyId || 'N/A'))
     );
   }
 }
@@ -698,14 +698,14 @@ class App extends React.Component {
       var surveys = data.d.results;
       Promise.all(surveys.map(function(survey) {
         return jQuery.ajax({
-          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Survey Responses\')/items?$filter=SurveyId eq ' + survey.Id + '&$count=true',
+          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'SurveyResponses\')/items?$filter=SurveyID eq ' + survey.Id + '&$count=true',
           headers: { 'Accept': 'application/json; odata=verbose' },
           xhrFields: { withCredentials: true }
         }).then(function(responseData) {
           survey.responseCount = responseData.d.__count || 0;
           return survey;
         }).catch(function(error) {
-          console.error('Error fetching responses for survey ' + survey.Id + ':', error);
+          console.error('Error fetching responses for form ' + survey.Id + ':', error);
           survey.responseCount = 0;
           return survey;
         });
@@ -716,8 +716,8 @@ class App extends React.Component {
         _this.addNotification('Failed to load response counts.', 'error');
       });
     }).fail(function(xhr, status, error) {
-      console.error('Error loading surveys:', error);
-      _this.addNotification('Failed to load surveys: ' + (xhr.responseText || error), 'error');
+      console.error('Error loading forms:', error);
+      _this.addNotification('Failed to load forms: ' + (xhr.responseText || error), 'error');
     });
   }
   addNotification(message, type) {
@@ -747,18 +747,18 @@ class App extends React.Component {
         },
         xhrFields: { withCredentials: true }
       }).done(function() {
-        _this.addNotification('Survey deleted successfully!');
-        console.log('Survey deleted:', surveyId);
+        _this.addNotification('Form deleted successfully!');
+        console.log('Form deleted:', surveyId);
         _this.loadSurveys();
       }).fail(function(xhr, status, error) {
-        console.error('Error deleting survey:', error);
+        console.error('Error deleting form:', error);
         var errorMessage = xhr.responseText || error || 'Unknown error';
-        if (xhr.status === 403) errorMessage = 'Access denied. You do not have permission to delete this survey.';
-        _this.addNotification('Failed to delete survey: ' + errorMessage, 'error');
+        if (xhr.status === 403) errorMessage = 'Access denied. You do not have permission to delete this form.';
+        _this.addNotification('Failed to delete form: ' + errorMessage, 'error');
       });
     }).fail(function(error) {
       console.error('Error getting digest:', error);
-      _this.addNotification('Failed to delete survey: Unable to get request digest.', 'error');
+      _this.addNotification('Failed to delete form: Unable to get request digest.', 'error');
     });
   }
   handleFilter({ searchTerm, status }) {
@@ -800,14 +800,14 @@ class App extends React.Component {
     } else {
       content = React.createElement('div', { className: 'p-4' },
         React.createElement('div', { className: 'flex justify-between items-center mb-4' },
-          React.createElement('h1', { className: 'text-2xl font-bold' }, 'Surveys'),
+          React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
           React.createElement('button', {
             className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition',
-            onClick: function() { window.location.href = '/builder?surveyId=new'; },
-            'aria-label': 'Create new survey'
+            onClick: function() { window.location.href = '/builder'; },
+            'aria-label': 'Create new form'
           }, 'Create New Form')
         ),
-        React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4' },
+        React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4' },
           this.state.filteredSurveys.map(function(survey) {
             return React.createElement(SurveyCard, {
               key: survey.Id,
