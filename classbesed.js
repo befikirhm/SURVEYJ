@@ -95,7 +95,7 @@ class SideNav extends React.Component {
   }
 }
 
-// SurveyCard component with header, footer, chips for owners and responses
+// SurveyCard component with labels and chips
 class SurveyCard extends React.Component {
   render() {
     const startDate = this.props.survey.StartDate ? new Date(this.props.survey.StartDate).toLocaleDateString('en-US') : 'N/A';
@@ -122,20 +122,24 @@ class SurveyCard extends React.Component {
         React.createElement('p', { className: 'text-gray-600 mb-2' },
           'Date Range: ' + startDate + ' - ' + endDate
         ),
-        React.createElement('div', { className: 'flex flex-wrap gap-2 mb-2' },
+        React.createElement('div', { className: 'mb-2' },
+          React.createElement('span', { className: 'text-gray-600' }, 'No of Responses: '),
           React.createElement('div', {
-            className: 'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'
+            className: 'inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm ml-2'
           }, 'Responses: ' + (this.props.survey.responseCount || 0))
         ),
-        React.createElement('div', { className: 'flex flex-wrap gap-2' },
+        React.createElement('div', { className: 'mb-2' },
+          React.createElement('span', { className: 'text-gray-600' }, 'Owners: '),
           this.props.survey.Owners?.results?.length > 0
-            ? this.props.survey.Owners.results.map(function(owner) {
-                return React.createElement('div', {
-                  key: owner.Id,
-                  className: 'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'
-                }, owner.Title);
-              })
-            : React.createElement('p', { className: 'text-gray-500 text-sm' }, 'No owners')
+            ? React.createElement('div', { className: 'inline-flex flex-wrap gap-2 ml-2' },
+                this.props.survey.Owners.results.map(function(owner) {
+                  return React.createElement('div', {
+                    key: owner.Id,
+                    className: 'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'
+                  }, owner.Title);
+                })
+              )
+            : React.createElement('span', { className: 'text-gray-500 text-sm ml-2' }, 'No owners')
         )
       ),
       // Footer
@@ -144,12 +148,12 @@ class SurveyCard extends React.Component {
       },
         React.createElement('button', {
           className: 'bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600',
-          onClick: function() { window.location.href = '/builder?surveyId=' + this.props.survey.Id; }.bind(this),
+          onClick: function() { window.open('/builder.aspx?surveyId=' + this.props.survey.Id, '_blank'); }.bind(this),
           'aria-label': 'Edit form'
         }, 'Edit Form'),
         React.createElement('button', {
           className: 'bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600',
-          onClick: function() { window.location.href = '/response?surveyId=' + this.props.survey.Id; }.bind(this),
+          onClick: function() { window.open('/response.aspx?surveyId=' + this.props.survey.Id, '_blank'); }.bind(this),
           'aria-label': 'View form report'
         }, 'View Report'),
         React.createElement('button', {
@@ -164,7 +168,7 @@ class SurveyCard extends React.Component {
         }, 'Edit Metadata'),
         React.createElement('button', {
           className: 'bg-indigo-500 text-white px-3 py-1 rounded hover:bg-indigo-600',
-          onClick: function() { window.location.href = '/formfiller?surveyId=' + this.props.survey.Id; }.bind(this),
+          onClick: function() { window.open('/formfiller.aspx?surveyId=' + this.props.survey.Id, '_blank'); }.bind(this),
           'aria-label': 'Fill form'
         }, 'Fill Form'),
         this.props.survey.AuthorId === this.props.currentUserId && React.createElement('button', {
@@ -182,7 +186,7 @@ class QRModal extends React.Component {
   componentDidMount() {
     var qr = new QRious({
       element: document.getElementById('qr-' + this.props.survey.Id),
-      value: window._spPageContextInfo.webAbsoluteUrl + '/formfiller?surveyId=' + this.props.survey.Id,
+      value: window._spPageContextInfo.webAbsoluteUrl + '/formfiller.aspx?surveyId=' + this.props.survey.Id,
       size: 200
     });
   }
@@ -194,7 +198,7 @@ class QRModal extends React.Component {
     link.click();
   }
   copyURL() {
-    var url = window._spPageContextInfo.webAbsoluteUrl + '/formfiller?surveyId=' + this.props.survey.Id;
+    var url = window._spPageContextInfo.webAbsoluteUrl + '/formfiller.aspx?surveyId=' + this.props.survey.Id;
     navigator.clipboard.writeText(url).then(() => {
       this.props.addNotification('URL copied to clipboard!', 'success');
     }).catch(() => {
@@ -385,7 +389,7 @@ class EditModal extends React.Component {
       form: Object.assign({}, this.state.form, {
         Owners: this.state.form.Owners.filter(function(o) { return o.Id !== userId; })
       })
-    });
+    );
   }
   handleSave() {
     var _this = this;
@@ -698,11 +702,11 @@ class App extends React.Component {
       var surveys = data.d.results;
       Promise.all(surveys.map(function(survey) {
         return jQuery.ajax({
-          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'SurveyResponses\')/items?$filter=SurveyID/Id eq ' + survey.Id + '&$count=true',
+          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'SurveyResponses\')/items?$filter=SurveyID/Id eq ' + survey.Id,
           headers: { 'Accept': 'application/json; odata=verbose' },
           xhrFields: { withCredentials: true }
         }).then(function(responseData) {
-          survey.responseCount = responseData.d.__count || 0;
+          survey.responseCount = responseData.d.results.length || 0;
           return survey;
         }).catch(function(error) {
           console.error('Error fetching responses for form ' + survey.Id + ':', error);
@@ -803,7 +807,7 @@ class App extends React.Component {
           React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
           React.createElement('button', {
             className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition',
-            onClick: function() { window.location.href = '/builder'; },
+            onClick: function() { window.open('/builder.aspx', '_blank'); },
             'aria-label': 'Create new form'
           }, 'Create New Form')
         ),
