@@ -24,6 +24,10 @@ class Notification extends React.Component {
 
 // TopNav component with logo and "Forms"
 class TopNav extends React.Component {
+  componentDidMount() {
+    // Log TopNav height for debugging
+    console.log('TopNav height:', document.querySelector('.bg-blue-600')?.offsetHeight || 'Not rendered');
+  }
   render() {
     return React.createElement('nav', {
       className: 'bg-blue-600 text-white p-4 flex justify-between items-center fixed top-0 left-0 right-0 z-1000 h-16'
@@ -67,7 +71,7 @@ class SideNav extends React.Component {
         (this.state.isOpen ? 'block' : 'hidden')
     },
       React.createElement('button', {
-        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-32 z-1100 flex items-center',
+        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-40 z-1100 flex items-center',
         onClick: this.toggleSidebar,
         'aria-label': this.state.isOpen ? 'Collapse sidebar' : 'Expand sidebar'
       },
@@ -109,7 +113,7 @@ class SideNav extends React.Component {
   }
 }
 
-// SurveyCard component with fixed syntax
+// SurveyCard component
 class SurveyCard extends React.Component {
   render() {
     const startDate = this.props.survey.StartDate ? new Date(this.props.survey.StartDate).toLocaleDateString('en-US') : 'N/A';
@@ -396,7 +400,7 @@ class EditModal extends React.Component {
           type: 'POST',
           data: JSON.stringify({
             query: _this.state.searchTerm,
-            source: 'UsersOnly', // Restrict to users, exclude groups
+            source: 'UsersOnly',
             maxResults: 10
           }),
           headers: {
@@ -409,7 +413,7 @@ class EditModal extends React.Component {
           if (!_this._isMounted) return;
           console.log('User profile search response:', data);
           var users = data.d.results
-            .filter(function(u) { return u.Id && u.Title; }) // Ensure valid users
+            .filter(function(u) { return u.Id && u.Title; })
             .map(function(u) { return { Id: u.Id, Title: u.Title }; });
           console.log('Parsed users:', users);
           var availableUsers = users.filter(function(u) {
@@ -687,10 +691,14 @@ class EditModal extends React.Component {
 
 // Placeholder components for ASPX pages
 class FormFillerComponent extends React.Component {
+  componentDidMount() {
+    // Log content position for debugging
+    console.log('FormFiller top:', document.querySelector('.min-h-screen')?.getBoundingClientRect().top || 'Not rendered');
+  }
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-32 md:mt-0 min-h-screen relative z-0' },
+    return React.createElement('div', { className: 'p-4 mt-40 md:mt-0 min-h-screen relative z-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Filler'),
       React.createElement('p', null, 'Filling form ID: ' + (surveyId || 'N/A'))
     );
@@ -698,10 +706,13 @@ class FormFillerComponent extends React.Component {
 }
 
 class BuilderComponent extends React.Component {
+  componentDidMount() {
+    console.log('Builder top:', document.querySelector('.min-h-screen')?.getBoundingClientRect().top || 'Not rendered');
+  }
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-32 md:mt-0 min-h-screen relative z-0' },
+    return React.createElement('div', { className: 'p-4 mt-40 md:mt-0 min-h-screen relative z-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Builder'),
       React.createElement('p', null, surveyId ? 'Editing form ID: ' + surveyId : 'Creating new form')
     );
@@ -709,10 +720,13 @@ class BuilderComponent extends React.Component {
 }
 
 class ResponseComponent extends React.Component {
+  componentDidMount() {
+    console.log('Response top:', document.querySelector('.min-h-screen')?.getBoundingClientRect().top || 'Not rendered');
+  }
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-32 md:mt-0 min-h-screen relative z-0' },
+    return React.createElement('div', { className: 'p-4 mt-40 md:mt-0 min-h-screen relative z-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Responses'),
       React.createElement('p', null, 'Viewing responses for form ID: ' + (surveyId || 'N/A'))
     );
@@ -758,6 +772,11 @@ class App extends React.Component {
     window.addEventListener('popstate', function() {
       _this.setState({ currentPage: window.location.pathname });
     });
+    // Log content position for debugging
+    setTimeout(() => {
+      console.log('Main content top:', document.querySelector('main')?.getBoundingClientRect().top || 'Not rendered');
+      console.log('Create New Form button top:', document.querySelector('button[aria-label="Create new form"]')?.getBoundingClientRect().top || 'Not rendered');
+    }, 1000);
   }
   loadSurveys() {
     var _this = this;
@@ -869,11 +888,11 @@ class App extends React.Component {
     } else if (this.state.currentPage.includes('/response')) {
       content = React.createElement(ResponseComponent);
     } else {
-      content = React.createElement('div', { className: 'p-4 mt-32 md:mt-0 min-h-screen relative z-0' },
-        React.createElement('div', { className: 'flex justify-between items-center mb-4 relative z-10' },
+      content = React.createElement('div', { className: 'p-4 mt-40 md:mt-0 min-h-screen relative z-0' },
+        React.createElement('div', { className: 'flex justify-between items-center mb-4 relative z-20' },
           React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
           React.createElement('button', {
-            className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center z-10',
+            className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center z-20',
             onClick: function() { window.open('/builder.aspx', '_blank'); },
             'aria-label': 'Create new form'
           },
@@ -898,7 +917,7 @@ class App extends React.Component {
     }
     return React.createElement('div', { className: 'min-h-screen bg-gray-100 relative' },
       React.createElement(TopNav, { currentUserName: this.state.currentUserName }),
-      React.createElement('div', { className: 'flex pt-32 md:pt-0' },
+      React.createElement('div', { className: 'flex pt-40 md:pt-0 !important' },
         React.createElement(SideNav, { onFilter: this.handleFilter.bind(this) }),
         React.createElement('main', { className: 'flex-1 p-4 relative z-0 min-h-screen' }, content)
       ),
