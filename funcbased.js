@@ -6,7 +6,7 @@ const listItemType = 'SP.Data.SurveysListItem';
 const contributeRoleId = 1073741827;
 
 function getRequestDigest() {
-  return document.getElementById('__REQUESTDIGEST').value;
+  return document.getElementById('__REQUESTDIGEST')?.value || '';
 }
 
 function TopNav({ currentUser, toggleSideNav, isSideNavOpen }) {
@@ -22,7 +22,7 @@ function TopNav({ currentUser, toggleSideNav, isSideNavOpen }) {
     ),
     e('img', { src: '/SiteAssets/logo.png', className: 'h-8' }),
     e('span', { className: 'ml-2 text-lg' }, 'Forms'),
-    e('span', { className: 'ml-auto' }, `Welcome, ${currentUser ? currentUser.Title : ''}`)
+    e('span', { className: 'ml-auto' }, `Welcome, ${currentUser ? currentUser.Title : 'User'}`)
   );
 }
 
@@ -50,13 +50,14 @@ function SideNav({ isOpen, setOpen, searchTerm, setSearchTerm, statusFilter, set
 }
 
 function SurveyCard({ survey, responsesCount, currentUserId, onEdit, onDelete, onShowQR }) {
+  const owners = survey.Owners || [];
   return e('div', { className: 'bg-white p-4 rounded shadow' },
     e('h3', { className: 'font-bold' }, survey.Title),
     e('p', null, 'Status: ', survey.Status),
     e('p', null, 'Date: ', new Date(survey.StartDate).toLocaleDateString(), ' - ', new Date(survey.EndDate).toLocaleDateString()),
     e('p', null, 'Responses: ', responsesCount[survey.Id] || 0),
     e('div', null, 'Owners: ',
-      survey.Owners.map(o => e('span', { key: o.Id, className: 'bg-blue-100 px-2 py-1 m-1 rounded inline-block' }, o.Title))
+      owners.map(o => e('span', { key: o.Id, className: 'bg-blue-100 px-2 py-1 m-1 rounded inline-block' }, o.Title))
     ),
     e('div', { className: 'mt-4 flex flex-wrap gap-2' },
       e('button', { className: 'bg-blue-500 text-white px-2 py-1 rounded', onClick: () => window.open(`builder.aspx?surveyId=${survey.Id}`, '_blank') }, 'Edit Form'),
@@ -130,7 +131,7 @@ function EditModal({ survey, onClose, onSave, currentUser, showNotification }) {
     startDate: survey.StartDate.split('T')[0],
     endDate: survey.EndDate.split('T')[0],
     status: survey.Status,
-    owners: survey.Owners
+    owners: survey.Owners || []
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [memberUsers, setMemberUsers] = useState([]);
@@ -150,17 +151,23 @@ function EditModal({ survey, onClose, onSave, currentUser, showNotification }) {
       $.ajax({
         url: `${baseUrl}/_api/web/sitegroups(${groupId})/users?$select=Id,Title,LoginName`,
         headers: { accept: 'application/json;odata=verbose' },
-        success: (data) => setMemberUsers(data.d.results)
+        success: (data) => {
+          console.log('Member users:', data.d.results);
+          setMemberUsers(data.d.results);
+        },
+        error: () => showNotification('error', 'Failed to fetch users')
       });
     }
   }, [groupId]);
 
   useEffect(() => {
     if (searchTerm) {
-      setFilteredUsers(memberUsers.filter(u =>
+      const filtered = memberUsers.filter(u =>
         u.Title.toLowerCase().includes(searchTerm.toLowerCase()) &&
         !formData.owners.some(o => o.Id === u.Id)
-      ));
+      );
+      console.log('Filtered users:', filtered);
+      setFilteredUsers(filtered);
     } else {
       setFilteredUsers([]);
     }
@@ -172,12 +179,20 @@ function EditModal({ survey, onClose, onSave, currentUser, showNotification }) {
   };
 
   const handleUserRemove = (userId) => {
+    if (userId === currentUser.Id) {
+      showNotification('warning', 'Cannot remove yourself as owner');
+      return;
+    }
     setFormData(prev => ({ ...prev, owners: prev.owners.filter(o => o.Id !== userId) }));
   };
 
   const handleSave = () => {
     if (new Date(formData.endDate) <= new Date(formData.startDate)) {
       showNotification('error', 'End date must be after start date');
+      return;
+    }
+    if (!formData.owners.some(o => o.Id === currentUser.Id)) {
+      showNotification('error', 'Current user must remain an owner');
       return;
     }
     const digest = getRequestDigest();
@@ -200,13 +215,11 @@ function EditModal({ survey, onClose, onSave, currentUser, showNotification }) {
         'X-RequestDigest': digest
       },
       success: () => {
-        // Break inheritance
         $.ajax({
           url: `${baseUrl}/_api/web/lists/getbytitle('Surveys')/items(${survey.Id})/breakroleinheritance(copyRoleAssignments=false,clearSubscopes=true)`,
           type: 'POST',
           headers: { 'X-RequestDigest': digest },
           success: () => {
-            // Add permissions for each owner
             const addPerms = ownersIds.map(id => $.ajax({
               url: `${baseUrl}/_api/web/lists/getbytitle('Surveys')/items(${survey.Id})/roleassignments/addroleassignment(principalid=${id},roledefid=${contributeRoleId})`,
               type: 'POST',
@@ -216,7 +229,8 @@ function EditModal({ survey, onClose, onSave, currentUser, showNotification }) {
               showNotification('success', 'Metadata updated');
               onSave();
             });
-          }
+          },
+          error: () => showNotification('error', 'Failed to set permissions')
         });
       },
       error: () => showNotification('error', 'Failed to update metadata')
@@ -247,7 +261,7 @@ function EditModal({ survey, onClose, onSave, currentUser, showNotification }) {
         e('div', { className: 'flex flex-wrap gap-1' },
           formData.owners.map(o => e('span', { key: o.Id, className: 'bg-blue-100 px-2 py-1 rounded flex items-center' },
             o.Title,
-            e('i', { className: 'fa fa-times ml-2 cursor-pointer', onClick: () => handleUserRemove(o.Id) })
+            o.Id && e('i', { className: 'fa fa-times ml-2 cursor-pointer', onClick: () => handleUserRemove(o.Id) })
           ))
         ),
         e('input', {
@@ -311,27 +325,14 @@ function App() {
   useEffect(() => {
     const hideSharePointElements = () => {
       const ribbon = document.getElementById('s4-ribbonrow');
-      if (ribbon) {
-        ribbon.style.display = 'none !important';
-        console.log('Ribbon hidden');
-      }
+      if (ribbon) ribbon.style.cssText = 'display: none !important';
       const titleRow = document.getElementById('s4-titlerow');
-      if (titleRow) {
-        titleRow.style.display = 'none !important';
-        console.log('Title row hidden');
-      }
+      if (titleRow) titleRow.style.cssText = 'display: none !important';
       const workspace = document.getElementById('s4-workspace');
-      if (workspace) {
-        workspace.style.overflow = 'visible !important';
-        workspace.style.position = 'static !important';
-        console.log('Workspace adjusted');
-      }
+      if (workspace) workspace.style.cssText = 'overflow: visible !important; position: static !important';
       const contentBox = document.getElementById('contentBox');
-      if (contentBox) {
-        contentBox.style.marginTop = '0 !important';
-        contentBox.style.paddingTop = '0 !important';
-        console.log('Content box adjusted');
-      }
+      if (contentBox) contentBox.style.cssText = 'margin-top: 0 !important; padding-top: 0 !important';
+      console.log('SharePoint elements adjusted:', { ribbon: !!ribbon, titleRow: !!titleRow, workspace: !!workspace, contentBox: !!contentBox });
     };
     hideSharePointElements();
   }, []);
@@ -340,7 +341,8 @@ function App() {
     $.ajax({
       url: `${baseUrl}/_api/web/currentuser?$select=Id,Title`,
       headers: { accept: 'application/json;odata=verbose' },
-      success: (data) => setCurrentUser(data.d)
+      success: (data) => setCurrentUser(data.d),
+      error: () => showNotification('error', 'Failed to fetch current user')
     });
   }, []);
 
@@ -348,7 +350,15 @@ function App() {
     $.ajax({
       url: `${baseUrl}/_api/web/lists/getbytitle('Surveys')/items?$select=Id,Title,Owners/Id,Owners/Title,StartDate,EndDate,Status,AuthorId&$expand=Owners`,
       headers: { accept: 'application/json;odata=verbose' },
-      success: (data) => setSurveys(data.d.results)
+      success: (data) => {
+        const surveys = data.d.results.map(s => ({
+          ...s,
+          Owners: s.Owners?.results || []
+        }));
+        console.log('Surveys:', surveys);
+        setSurveys(surveys);
+      },
+      error: () => showNotification('error', 'Failed to fetch surveys')
     });
   };
 
@@ -356,7 +366,11 @@ function App() {
     $.ajax({
       url: `${baseUrl}/_api/web/lists/getbytitle('SurveyResponses')/items?$select=SurveyID`,
       headers: { accept: 'application/json;odata=verbose' },
-      success: (data) => setResponses(data.d.results)
+      success: (data) => {
+        console.log('Responses:', data.d.results);
+        setResponses(data.d.results);
+      },
+      error: () => showNotification('error', 'Failed to fetch responses')
     });
   };
 
@@ -381,7 +395,7 @@ function App() {
       const end = new Date(s.EndDate);
       if (start > now) return 'Upcoming';
       if (end >= now) return 'Running';
-      return 'Published'; // or Closed, but not in filters
+      return 'Published';
     }
     return s.Status;
   };
@@ -425,7 +439,6 @@ function App() {
       },
       success: (data) => {
         const id = data.d.Id;
-        // Break inheritance and add perm
         $.ajax({
           url: `${baseUrl}/_api/web/lists/getbytitle('Surveys')/items(${id})/breakroleinheritance(copyRoleAssignments=false,clearSubscopes=true)`,
           type: 'POST',
@@ -436,12 +449,16 @@ function App() {
               type: 'POST',
               headers: { 'X-RequestDigest': digest },
               success: () => {
+                showNotification('success', 'Survey created');
                 window.open(`builder.aspx?surveyId=${id}`, '_blank');
-              }
+              },
+              error: () => showNotification('error', 'Failed to set permissions')
             });
-          }
+          },
+          error: () => showNotification('error', 'Failed to break inheritance')
         });
-      }
+      },
+      error: () => showNotification('error', 'Failed to create survey')
     });
   };
 
@@ -473,4 +490,10 @@ function App() {
   );
 }
 
-ReactDOM.render(e(App), document.getElementById('root'));
+// Use createRoot for React 18
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(e(App));
+} else {
+  console.error('Root element not found');
+}
