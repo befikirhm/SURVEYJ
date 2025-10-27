@@ -67,7 +67,7 @@ class SideNav extends React.Component {
         (this.state.isOpen ? 'block' : 'hidden')
     },
       React.createElement('button', {
-        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-24 z-1100 flex items-center',
+        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-32 z-1100 flex items-center',
         onClick: this.toggleSidebar,
         'aria-label': this.state.isOpen ? 'Collapse sidebar' : 'Expand sidebar'
       },
@@ -349,7 +349,7 @@ class DeleteModal extends React.Component {
   }
 }
 
-// EditModal component with site users only
+// EditModal component with User Profile Service search
 class EditModal extends React.Component {
   constructor(props) {
     super(props);
@@ -389,21 +389,29 @@ class EditModal extends React.Component {
       clearTimeout(this._debounce);
       this._debounce = setTimeout(function() {
         _this.setState({ isLoadingUsers: true });
-        var siteUsersUrl = window._spPageContextInfo.webAbsoluteUrl + '/_api/web/siteusers?$select=Id,Title,Email&$filter=' +
-          'substringof(\'' + encodeURIComponent(_this.state.searchTerm) + '\',Title) or ' +
-          'substringof(\'' + encodeURIComponent(_this.state.searchTerm) + '\',Email)&$top=10';
-        console.log('Site users query:', siteUsersUrl);
+        var searchUrl = window._spPageContextInfo.webAbsoluteUrl + '/_api/SP.UserProfiles.PeopleManager/SearchPrincipals';
+        console.log('User profile search query:', searchUrl, 'SearchTerm:', _this.state.searchTerm);
         jQuery.ajax({
-          url: siteUsersUrl,
-          headers: { 'Accept': 'application/json; odata=verbose' },
+          url: searchUrl,
+          type: 'POST',
+          data: JSON.stringify({
+            query: _this.state.searchTerm,
+            source: 'UsersOnly', // Restrict to users, exclude groups
+            maxResults: 10
+          }),
+          headers: {
+            'Accept': 'application/json; odata=verbose',
+            'Content-Type': 'application/json; odata=verbose',
+            'X-RequestDigest': document.getElementById('__REQUESTDIGEST')?.value || ''
+          },
           xhrFields: { withCredentials: true }
         }).done(function(data) {
           if (!_this._isMounted) return;
-          console.log('Site users response:', data);
+          console.log('User profile search response:', data);
           var users = data.d.results
-            .filter(function(u) { return u.Id && (u.Title || u.Email) && u.PrincipalType === 1; })
-            .map(function(u) { return { Id: u.Id, Title: u.Title || u.Email }; });
-          console.log('Parsed site users:', users);
+            .filter(function(u) { return u.Id && u.Title; }) // Ensure valid users
+            .map(function(u) { return { Id: u.Id, Title: u.Title }; });
+          console.log('Parsed users:', users);
           var availableUsers = users.filter(function(u) {
             return !_this.state.form.Owners.some(function(selected) { return selected.Id === u.Id; });
           });
@@ -413,12 +421,12 @@ class EditModal extends React.Component {
             showDropdown: availableUsers.length > 0
           });
           if (availableUsers.length === 0) {
-            _this.props.addNotification('No matching site users found.', 'warning');
+            _this.props.addNotification('No matching users found in User Profile Service.', 'warning');
           }
         }).fail(function(xhr, status, error) {
           if (!_this._isMounted) return;
-          console.error('Site users error:', error, xhr.responseText);
-          _this.props.addNotification('Failed to search site users: ' + (xhr.responseText || error), 'error');
+          console.error('User profile search error:', error, xhr.responseText);
+          _this.props.addNotification('Failed to search users: ' + (xhr.responseText || error), 'error');
           _this.setState({ isLoadingUsers: false, showDropdown: false });
         });
       }, 300);
@@ -566,7 +574,7 @@ class EditModal extends React.Component {
                   type: 'text',
                   value: this.state.searchTerm,
                   onChange: function(e) { _this.setState({ searchTerm: e.target.value }); },
-                  placeholder: 'Search for site users by name or email...',
+                  placeholder: 'Search for users by name or email...',
                   className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
                   'aria-label': 'Search for users'
                 }),
@@ -682,7 +690,7 @@ class FormFillerComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-24 md:mt-0 relative z-0' },
+    return React.createElement('div', { className: 'p-4 mt-32 md:mt-0 min-h-screen relative z-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Filler'),
       React.createElement('p', null, 'Filling form ID: ' + (surveyId || 'N/A'))
     );
@@ -693,7 +701,7 @@ class BuilderComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-24 md:mt-0 relative z-0' },
+    return React.createElement('div', { className: 'p-4 mt-32 md:mt-0 min-h-screen relative z-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Builder'),
       React.createElement('p', null, surveyId ? 'Editing form ID: ' + surveyId : 'Creating new form')
     );
@@ -704,7 +712,7 @@ class ResponseComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-24 md:mt-0 relative z-0' },
+    return React.createElement('div', { className: 'p-4 mt-32 md:mt-0 min-h-screen relative z-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Responses'),
       React.createElement('p', null, 'Viewing responses for form ID: ' + (surveyId || 'N/A'))
     );
@@ -861,7 +869,7 @@ class App extends React.Component {
     } else if (this.state.currentPage.includes('/response')) {
       content = React.createElement(ResponseComponent);
     } else {
-      content = React.createElement('div', { className: 'p-4 mt-24 md:mt-0 relative z-0' },
+      content = React.createElement('div', { className: 'p-4 mt-32 md:mt-0 min-h-screen relative z-0' },
         React.createElement('div', { className: 'flex justify-between items-center mb-4 relative z-10' },
           React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
           React.createElement('button', {
@@ -890,9 +898,9 @@ class App extends React.Component {
     }
     return React.createElement('div', { className: 'min-h-screen bg-gray-100 relative' },
       React.createElement(TopNav, { currentUserName: this.state.currentUserName }),
-      React.createElement('div', { className: 'flex pt-24 md:pt-0' },
+      React.createElement('div', { className: 'flex pt-32 md:pt-0' },
         React.createElement(SideNav, { onFilter: this.handleFilter.bind(this) }),
-        React.createElement('main', { className: 'flex-1 p-4 relative z-0' }, content)
+        React.createElement('main', { className: 'flex-1 p-4 relative z-0 min-h-screen' }, content)
       ),
       this.state.notifications.map(function(notification) {
         return React.createElement(Notification, {
