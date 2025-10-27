@@ -16,7 +16,8 @@ class EditModal extends React.Component {
       searchResults: [],
       isLoadingUsers: false,
       isSaving: false,
-      showDropdown: false
+      showDropdown: false,
+      isFallbackMode: false // Track if using /siteusers fallback
     };
     this.handleUserSelect = this.handleUserSelect.bind(this);
     this.handleUserRemove = this.handleUserRemove.bind(this);
@@ -34,14 +35,15 @@ class EditModal extends React.Component {
     var _this = this;
     if (prevState.searchTerm !== this.state.searchTerm) {
       if (!this.state.searchTerm) {
-        this.setState({ searchResults: [], showDropdown: false });
+        this.setState({ searchResults: [], showDropdown: false, isFallbackMode: false });
         return;
       }
       clearTimeout(this._debounce);
       this._debounce = setTimeout(function() {
         _this.setState({ isLoadingUsers: true });
-        // Use Search API to find users across SharePoint
-        var queryText = 'contentclass:STS_User *' + encodeURIComponent(_this.state.searchTerm) + '*';
+        // Use Search API to find users by name
+        var queryText = 'PreferredName:*' + encodeURIComponent(_this.state.searchTerm) + '* OR AccountName:*' + encodeURIComponent(_this.state.searchTerm) + '*';
+        console.log('Search query:', queryText); // Debug query
         jQuery.ajax({
           url: window._spPageContextInfo.webAbsoluteUrl + '/_api/search/query?querytext=\'' + queryText + '\'&selectproperties=\'AccountName,PreferredName,UserProfile_GUID\'&sourceid=\'b09a7990-05ea-4af9-81ef-edfab16c4e31\'&rowlimit=10',
           headers: {
@@ -51,6 +53,7 @@ class EditModal extends React.Component {
           xhrFields: { withCredentials: true }
         }).done(function(data) {
           if (!_this._isMounted) return;
+          console.log('Search API response:', data); // Debug raw response
           var users = (data.d.query.PrimaryQueryResult.RelevantResults.Table.Rows.results || [])
             .map(function(row) {
               var cells = row.Cells.results.reduce(function(acc, cell) {
@@ -62,17 +65,81 @@ class EditModal extends React.Component {
                 Title: cells.PreferredName || cells.AccountName || 'Unknown User'
               };
             })
-            .filter(function(u) { return u.Id !== 0 && u.Title; });
+            .filter(function(u) { return u.Id !== 0 && u.Title && u.Title !== 'Unknown User'; });
+          console.log('Parsed users:', users); // Debug parsed users
           // Filter out already selected owners
           var availableUsers = users.filter(function(u) {
             return !_this.state.form.Owners.some(function(selected) { return selected.Id === u.Id; });
           });
-          _this.setState({ searchResults: availableUsers, isLoadingUsers: false, showDropdown: availableUsers.length > 0 });
+          if (availableUsers.length === 0 && !_this.state.isFallbackMode) {
+            // Fallback to /siteusers if no results
+            console.log('No results from Search API, falling back to /siteusers');
+            _this.props.addNotification('No users found in tenant. Showing site members only.', 'warning');
+            jQuery.ajax({
+              url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/siteusers?$select=Id,Title&$filter=substringof(\'' + encodeURIComponent(_this.state.searchTerm) + '\',Title)&$top=10',
+              headers: { 'Accept': 'application/json; odata=verbose' },
+              xhrFields: { withCredentials: true }
+            }).done(function(fallbackData) {
+              if (!_this._isMounted) return;
+              var fallbackUsers = fallbackData.d.results
+                .filter(function(u) { return u.Id && u.Title; })
+                .map(function(u) { return { Id: u.Id, Title: u.Title }; });
+              var availableFallbackUsers = fallbackUsers.filter(function(u) {
+                return !_this.state.form.Owners.some(function(selected) { return selected.Id === u.Id; });
+              });
+              console.log('Fallback users:', availableFallbackUsers); // Debug fallback users
+              _this.setState({
+                searchResults: availableFallbackUsers,
+                isLoadingUsers: false,
+                showDropdown: availableFallbackUsers.length > 0,
+                isFallbackMode: true
+              });
+            }).fail(function(xhr, status, error) {
+              if (!_this._isMounted) return;
+              console.error('Fallback /siteusers error:', error, xhr.responseText);
+              _this.props.addNotification('Failed to search users: ' + (xhr.responseText || error), 'error');
+              _this.setState({ isLoadingUsers: false, showDropdown: false, isFallbackMode: false });
+            });
+          } else {
+            _this.setState({
+              searchResults: availableUsers,
+              isLoadingUsers: false,
+              showDropdown: availableUsers.length > 0,
+              isFallbackMode: false
+            });
+          }
         }).fail(function(xhr, status, error) {
           if (!_this._isMounted) return;
-          console.error('Error searching users:', error, xhr.responseText);
-          _this.props.addNotification('Failed to search users: ' + (xhr.responseText || error), 'error');
-          _this.setState({ isLoadingUsers: false, showDropdown: false });
+          console.error('Search API error:', error, xhr.responseText);
+          _this.props.addNotification('Failed to search users in tenant: ' + (xhr.responseText || error), 'error');
+          // Attempt fallback to /siteusers
+          console.log('Search API failed, falling back to /siteusers');
+          jQuery.ajax({
+            url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/siteusers?$select=Id,Title&$filter=substringof(\'' + encodeURIComponent(_this.state.searchTerm) + '\',Title)&$top=10',
+            headers: { 'Accept': 'application/json; odata=verbose' },
+            xhrFields: { withCredentials: true }
+          }).done(function(fallbackData) {
+            if (!_this._isMounted) return;
+            var fallbackUsers = fallbackData.d.results
+              .filter(function(u) { return u.Id && u.Title; })
+              .map(function(u) { return { Id: u.Id, Title: u.Title }; });
+            var availableFallbackUsers = fallbackUsers.filter(function(u) {
+              return !_this.state.form.Owners.some(function(selected) { return selected.Id === u.Id; });
+            });
+            console.log('Fallback users:', availableFallbackUsers); // Debug fallback users
+            _this.props.addNotification('Tenant-wide search failed. Showing site members only.', 'warning');
+            _this.setState({
+              searchResults: availableFallbackUsers,
+              isLoadingUsers: false,
+              showDropdown: availableFallbackUsers.length > 0,
+              isFallbackMode: true
+            });
+          }).fail(function(xhr, status, error) {
+            if (!_this._isMounted) return;
+            console.error('Fallback /siteusers error:', error, xhr.responseText);
+            _this.props.addNotification('Failed to search users: ' + (xhr.responseText || error), 'error');
+            _this.setState({ isLoadingUsers: false, showDropdown: false, isFallbackMode: false });
+          });
         });
       }, 300);
     }
