@@ -78,7 +78,7 @@ class SideNav extends React.Component {
   }
 }
 
-// SurveyCard component
+// SurveyCard component with Delete button
 class SurveyCard extends React.Component {
   render() {
     return React.createElement('div', {
@@ -97,7 +97,13 @@ class SurveyCard extends React.Component {
           className: 'bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600',
           onClick: this.props.onViewQR,
           'aria-label': 'View QR code'
-        }, 'QR Code')
+        }, 'QR Code'),
+        React.createElement('button', {
+          className: 'bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600' + (this.props.survey.AuthorId === this.props.currentUserId ? '' : ' opacity-50 cursor-not-allowed'),
+          onClick: this.props.onDelete,
+          disabled: this.props.survey.AuthorId !== this.props.currentUserId,
+          'aria-label': 'Delete survey'
+        }, 'Delete')
       )
     );
   }
@@ -146,7 +152,53 @@ class QRModal extends React.Component {
   }
 }
 
-// EditModal component with updated Owners search
+// DeleteModal component
+class DeleteModal extends React.Component {
+  render() {
+    return React.createElement('div', {
+      className: 'fixed inset-0 flex items-center justify-center z-1000 bg-black/50'
+    },
+      React.createElement('div', {
+        className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl'
+      },
+        React.createElement('div', {
+          className: 'flex justify-between items-center p-4 border-b bg-gray-100'
+        },
+          React.createElement('h2', {
+            className: 'text-lg font-bold text-gray-800'
+          }, 'Confirm Deletion'),
+          React.createElement('button', {
+            type: 'button',
+            className: 'text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full w-8 h-8 flex items-center justify-center',
+            onClick: this.props.onCancel,
+            'aria-label': 'Cancel deletion'
+          }, '\u00D7')
+        ),
+        React.createElement('div', { className: 'p-6' },
+          React.createElement('p', { className: 'text-gray-700' },
+            'Are you sure you want to delete the survey "' + this.props.survey.Title + '"? This action cannot be undone.'
+          )
+        ),
+        React.createElement('div', { className: 'p-4 border-t bg-gray-50 flex justify-end gap-3' },
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 transition',
+            onClick: this.props.onConfirm,
+            'aria-label': 'Confirm deletion'
+          }, 'Confirm'),
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 transition',
+            onClick: this.props.onCancel,
+            'aria-label': 'Cancel deletion'
+          }, 'Cancel')
+        )
+      )
+    );
+  }
+}
+
+// EditModal component
 class EditModal extends React.Component {
   constructor(props) {
     super(props);
@@ -327,7 +379,7 @@ class EditModal extends React.Component {
       form: Object.assign({}, this.state.form, {
         Owners: this.state.form.Owners.filter(function(o) { return o.Id !== userId; })
       })
-    });
+    );
   }
   handleSave() {
     var _this = this;
@@ -584,7 +636,7 @@ class ResponseComponent extends React.Component {
   }
 }
 
-// Main App component
+// Main App component with delete functionality
 class App extends React.Component {
   constructor(props) {
     super(props);
@@ -595,10 +647,12 @@ class App extends React.Component {
       notifications: [],
       editingSurvey: null,
       viewingQR: null,
+      deletingSurvey: null, // Track survey to delete
       currentPage: window.location.pathname
     };
     this.loadSurveys = this.loadSurveys.bind(this);
     this.addNotification = this.addNotification.bind(this);
+    this.handleDelete = this.handleDelete.bind(this);
   }
   componentDidMount() {
     var _this = this;
@@ -616,7 +670,7 @@ class App extends React.Component {
       console.error('Error loading current user:', error);
       _this.addNotification('Failed to load user information: ' + (xhr.responseText || error), 'error');
     });
-    // Load surveys
+    // Load surveys with AuthorId
     this.loadSurveys();
     // Handle page navigation
     window.addEventListener('popstate', function() {
@@ -626,7 +680,7 @@ class App extends React.Component {
   loadSurveys() {
     var _this = this;
     jQuery.ajax({
-      url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items?$select=Id,Title,Owners/Id,Owners/Title,StartDate,EndDate,Status,Responses&$expand=Owners',
+      url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items?$select=Id,Title,Owners/Id,Owners/Title,StartDate,EndDate,Status,Responses,AuthorId&$expand=Owners',
       headers: { 'Accept': 'application/json; odata=verbose' },
       xhrFields: { withCredentials: true }
     }).done(function(data) {
@@ -648,10 +702,38 @@ class App extends React.Component {
       });
     }, 5000);
   }
+  handleDelete(surveyId) {
+    var _this = this;
+    this.setState({ deletingSurvey: null }); // Close modal
+    getDigest().then(function(digest) {
+      jQuery.ajax({
+        url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + surveyId + ')',
+        type: 'POST',
+        headers: {
+          'X-HTTP-Method': 'DELETE',
+          'If-Match': '*',
+          'Accept': 'application/json; odata=verbose',
+          'X-RequestDigest': digest
+        },
+        xhrFields: { withCredentials: true }
+      }).done(function() {
+        _this.props.addNotification('Survey deleted successfully!');
+        console.log('Survey deleted:', surveyId);
+        _this.loadSurveys();
+      }).fail(function(xhr, status, error) {
+        console.error('Error deleting survey:', error);
+        var errorMessage = xhr.responseText || error || 'Unknown error';
+        if (error.status === 403) errorMessage = 'Access denied. You do not have permission to delete this survey.';
+        _this.props.addNotification('Failed to delete survey: ' + errorMessage, 'error');
+      });
+    }).fail(function(error) {
+      console.error('Error getting digest:', error);
+      _this.props.addNotification('Failed to delete survey: Unable to get request digest.', 'error');
+    });
+  }
   render() {
     var _this = this;
     var content;
-    // Simple routing based on currentPage
     if (this.state.currentPage === '/formfiller') {
       content = React.createElement(FormFillerComponent);
     } else if (this.state.currentPage === '/builder') {
@@ -659,7 +741,6 @@ class App extends React.Component {
     } else if (this.state.currentPage === '/response') {
       content = React.createElement(ResponseComponent);
     } else {
-      // Default: Survey dashboard
       content = React.createElement('div', { className: 'p-4' },
         React.createElement('h1', { className: 'text-2xl font-bold mb-4' }, 'Surveys'),
         React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4' },
@@ -667,8 +748,10 @@ class App extends React.Component {
             return React.createElement(SurveyCard, {
               key: survey.Id,
               survey: survey,
+              currentUserId: _this.state.currentUserId,
               onEdit: function() { _this.setState({ editingSurvey: survey }); },
-              onViewQR: function() { _this.setState({ viewingQR: survey }); }
+              onViewQR: function() { _this.setState({ viewingQR: survey }); },
+              onDelete: function() { _this.setState({ deletingSurvey: survey }); }
             });
           })
         )
@@ -697,6 +780,11 @@ class App extends React.Component {
       this.state.viewingQR && React.createElement(QRModal, {
         survey: this.state.viewingQR,
         onClose: function() { _this.setState({ viewingQR: null }); }
+      }),
+      this.state.deletingSurvey && React.createElement(DeleteModal, {
+        survey: this.state.deletingSurvey,
+        onConfirm: function() { _this.handleDelete(_this.state.deletingSurvey.Id); },
+        onCancel: function() { _this.setState({ deletingSurvey: null }); }
       })
     );
   }
