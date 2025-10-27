@@ -43,7 +43,7 @@ class TopNav extends React.Component {
   }
 }
 
-// SideNav component with fixed toggle button
+// SideNav component with working toggle
 class SideNav extends React.Component {
   constructor(props) {
     super(props);
@@ -59,46 +59,42 @@ class SideNav extends React.Component {
   }
   render() {
     var _this = this;
-    return React.createElement('div', null,
-      // Toggle button for small screens
+    return React.createElement('div', {
+      className: 'bg-gray-800 text-white w-64 h-screen fixed top-0 left-0 md:static md:block ' +
+        (this.state.isOpen ? 'block' : 'hidden')
+    },
       React.createElement('button', {
-        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded fixed top-16 left-4 z-1100',
+        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-16',
         onClick: this.toggleSidebar,
         'aria-label': this.state.isOpen ? 'Collapse sidebar' : 'Expand sidebar'
       }, this.state.isOpen ? 'Collapse' : 'Expand'),
-      // Sidebar
-      React.createElement('div', {
-        className: 'bg-gray-800 text-white w-64 h-screen fixed top-0 left-0 transition-transform duration-300 ' +
-          (this.state.isOpen ? 'translate-x-0' : '-translate-x-full') + ' md:translate-x-0 md:static md:block z-900'
-      },
-        React.createElement('div', { className: 'p-4 mt-16 md:mt-0' },
-          React.createElement('div', { className: 'mb-4' },
-            React.createElement('input', {
-              type: 'text',
-              placeholder: 'Search forms...',
-              value: this.state.searchTerm,
-              onChange: function(e) {
-                _this.setState({ searchTerm: e.target.value });
-                _this.props.onFilter({ searchTerm: e.target.value, status: _this.state.selectedFilter });
-              },
-              className: 'w-full p-2 border rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500',
-              'aria-label': 'Search forms'
-            })
-          ),
-          React.createElement('ul', { className: 'space-y-2' },
-            ['All', 'Published', 'Draft', 'Upcoming', 'Running'].map(function(filter) {
-              return React.createElement('li', { key: filter },
-                React.createElement('button', {
-                  className: 'w-full text-left p-2 hover:bg-gray-700 rounded ' +
-                    (_this.state.selectedFilter === filter ? 'bg-gray-700 font-semibold' : ''),
-                  onClick: function() {
-                    _this.setState({ selectedFilter: filter });
-                    _this.props.onFilter({ searchTerm: _this.state.searchTerm, status: filter });
-                  }
-                }, filter)
-              );
-            })
-          )
+      React.createElement('div', { className: 'p-4' },
+        React.createElement('div', { className: 'mb-4' },
+          React.createElement('input', {
+            type: 'text',
+            placeholder: 'Search forms...',
+            value: this.state.searchTerm,
+            onChange: function(e) {
+              _this.setState({ searchTerm: e.target.value });
+              _this.props.onFilter({ searchTerm: e.target.value, status: _this.state.selectedFilter });
+            },
+            className: 'w-full p-2 border rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500',
+            'aria-label': 'Search forms'
+          })
+        ),
+        React.createElement('ul', { className: 'space-y-2' },
+          ['All', 'Published', 'Draft', 'Upcoming', 'Running'].map(function(filter) {
+            return React.createElement('li', { key: filter },
+              React.createElement('button', {
+                className: 'w-full text-left p-2 hover:bg-gray-700 rounded ' +
+                  (_this.state.selectedFilter === filter ? 'bg-gray-700 font-semibold' : ''),
+                onClick: function() {
+                  _this.setState({ selectedFilter: filter });
+                  _this.props.onFilter({ searchTerm: _this.state.searchTerm, status: filter });
+                }
+              }, filter)
+            );
+          })
         )
       )
     );
@@ -633,7 +629,7 @@ class FormFillerComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4' },
+    return React.createElement('div', { className: 'p-4 mt-16 md:mt-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Filler'),
       React.createElement('p', null, 'Filling form ID: ' + (surveyId || 'N/A'))
     );
@@ -644,7 +640,7 @@ class BuilderComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4' },
+    return React.createElement('div', { className: 'p-4 mt-16 md:mt-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Builder'),
       React.createElement('p', null, surveyId ? 'Editing form ID: ' + surveyId : 'Creating new form')
     );
@@ -655,7 +651,7 @@ class ResponseComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4' },
+    return React.createElement('div', { className: 'p-4 mt-16 md:mt-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Responses'),
       React.createElement('p', null, 'Viewing responses for form ID: ' + (surveyId || 'N/A'))
     );
@@ -838,7 +834,7 @@ class App extends React.Component {
     }
     return React.createElement('div', { className: 'min-h-screen bg-gray-100' },
       React.createElement(TopNav, { currentUserName: this.state.currentUserName }),
-      React.createElement('div', { className: 'flex' },
+      React.createElement('div', { className: 'flex pt-16 md:pt-0' },
         React.createElement(SideNav, { onFilter: this.handleFilter.bind(this) }),
         React.createElement('main', { className: 'flex-1 p-4' }, content)
       ),
