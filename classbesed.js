@@ -698,7 +698,7 @@ class App extends React.Component {
       var surveys = data.d.results;
       Promise.all(surveys.map(function(survey) {
         return jQuery.ajax({
-          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'SurveyResponses\')/items?$filter=SurveyID eq ' + survey.Id + '&$count=true',
+          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'SurveyResponses\')/items?$filter=SurveyID/Id eq ' + survey.Id + '&$count=true',
           headers: { 'Accept': 'application/json; odata=verbose' },
           xhrFields: { withCredentials: true }
         }).then(function(responseData) {
