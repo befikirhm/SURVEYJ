@@ -67,7 +67,7 @@ class SideNav extends React.Component {
         (this.state.isOpen ? 'block' : 'hidden')
     },
       React.createElement('button', {
-        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-20 z-1100 flex items-center',
+        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-24 z-1100 flex items-center',
         onClick: this.toggleSidebar,
         'aria-label': this.state.isOpen ? 'Collapse sidebar' : 'Expand sidebar'
       },
@@ -109,7 +109,7 @@ class SideNav extends React.Component {
   }
 }
 
-// SurveyCard component with labels and chips
+// SurveyCard component with fixed syntax
 class SurveyCard extends React.Component {
   render() {
     const startDate = this.props.survey.StartDate ? new Date(this.props.survey.StartDate).toLocaleDateString('en-US') : 'N/A';
@@ -682,7 +682,7 @@ class FormFillerComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-20 md:mt-0' },
+    return React.createElement('div', { className: 'p-4 mt-24 md:mt-0 relative z-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Filler'),
       React.createElement('p', null, 'Filling form ID: ' + (surveyId || 'N/A'))
     );
@@ -693,7 +693,7 @@ class BuilderComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-20 md:mt-0' },
+    return React.createElement('div', { className: 'p-4 mt-24 md:mt-0 relative z-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Builder'),
       React.createElement('p', null, surveyId ? 'Editing form ID: ' + surveyId : 'Creating new form')
     );
@@ -704,7 +704,7 @@ class ResponseComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-20 md:mt-0' },
+    return React.createElement('div', { className: 'p-4 mt-24 md:mt-0 relative z-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Responses'),
       React.createElement('p', null, 'Viewing responses for form ID: ' + (surveyId || 'N/A'))
     );
@@ -861,8 +861,8 @@ class App extends React.Component {
     } else if (this.state.currentPage.includes('/response')) {
       content = React.createElement(ResponseComponent);
     } else {
-      content = React.createElement('div', { className: 'p-4 mt-20 md:mt-0 z-0' },
-        React.createElement('div', { className: 'flex justify-between items-center mb-4 z-10 relative' },
+      content = React.createElement('div', { className: 'p-4 mt-24 md:mt-0 relative z-0' },
+        React.createElement('div', { className: 'flex justify-between items-center mb-4 relative z-10' },
           React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
           React.createElement('button', {
             className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center z-10',
@@ -888,11 +888,11 @@ class App extends React.Component {
         )
       );
     }
-    return React.createElement('div', { className: 'min-h-screen bg-gray-100' },
+    return React.createElement('div', { className: 'min-h-screen bg-gray-100 relative' },
       React.createElement(TopNav, { currentUserName: this.state.currentUserName }),
-      React.createElement('div', { className: 'flex pt-20 md:pt-0' },
+      React.createElement('div', { className: 'flex pt-24 md:pt-0' },
         React.createElement(SideNav, { onFilter: this.handleFilter.bind(this) }),
-        React.createElement('main', { className: 'flex-1 p-4 z-0' }, content)
+        React.createElement('main', { className: 'flex-1 p-4 relative z-0' }, content)
       ),
       this.state.notifications.map(function(notification) {
         return React.createElement(Notification, {
