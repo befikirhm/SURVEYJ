@@ -26,7 +26,7 @@ class Notification extends React.Component {
 class TopNav extends React.Component {
   render() {
     return React.createElement('nav', {
-      className: 'bg-blue-600 text-white p-4 flex justify-between items-center fixed top-0 left-0 right-0 z-1000'
+      className: 'bg-blue-600 text-white p-4 flex justify-between items-center fixed top-0 left-0 right-0 z-1000 h-16'
     },
       React.createElement('div', { className: 'flex items-center' },
         React.createElement('img', {
@@ -43,7 +43,7 @@ class TopNav extends React.Component {
   }
 }
 
-// SideNav component with working toggle
+// SideNav component with fixed toggle and icons
 class SideNav extends React.Component {
   constructor(props) {
     super(props);
@@ -55,19 +55,27 @@ class SideNav extends React.Component {
     this.toggleSidebar = this.toggleSidebar.bind(this);
   }
   toggleSidebar() {
-    this.setState({ isOpen: !this.state.isOpen });
+    console.log('Toggling sidebar, current isOpen:', this.state.isOpen);
+    this.setState({ isOpen: !this.state.isOpen }, () => {
+      console.log('Sidebar toggled, new isOpen:', this.state.isOpen);
+    });
   }
   render() {
     var _this = this;
     return React.createElement('div', {
-      className: 'bg-gray-800 text-white w-64 h-screen fixed top-0 left-0 md:static md:block ' +
+      className: 'bg-gray-800 text-white w-64 h-screen fixed top-0 left-0 md:static md:block z-900 ' +
         (this.state.isOpen ? 'block' : 'hidden')
     },
       React.createElement('button', {
-        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-16',
+        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-20 z-1100 flex items-center',
         onClick: this.toggleSidebar,
         'aria-label': this.state.isOpen ? 'Collapse sidebar' : 'Expand sidebar'
-      }, this.state.isOpen ? 'Collapse' : 'Expand'),
+      },
+        React.createElement('i', {
+          className: this.state.isOpen ? 'fas fa-times mr-2' : 'fas fa-bars mr-2'
+        }),
+        this.state.isOpen ? 'Collapse' : 'Expand'
+      ),
       React.createElement('div', { className: 'p-4' },
         React.createElement('div', { className: 'mb-4' },
           React.createElement('input', {
@@ -153,35 +161,53 @@ class SurveyCard extends React.Component {
         className: 'p-4 border-t bg-gray-50 flex gap-2 flex-wrap'
       },
         React.createElement('button', {
-          className: 'bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600',
+          className: 'bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 flex items-center',
           onClick: function() { window.open('/builder.aspx?surveyId=' + this.props.survey.Id, '_blank'); }.bind(this),
           'aria-label': 'Edit form'
-        }, 'Edit Form'),
+        },
+          React.createElement('i', { className: 'fas fa-edit mr-2' }),
+          'Edit Form'
+        ),
         React.createElement('button', {
-          className: 'bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600',
+          className: 'bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 flex items-center',
           onClick: function() { window.open('/response.aspx?surveyId=' + this.props.survey.Id, '_blank'); }.bind(this),
           'aria-label': 'View form report'
-        }, 'View Report'),
+        },
+          React.createElement('i', { className: 'fas fa-chart-bar mr-2' }),
+          'View Report'
+        ),
         React.createElement('button', {
-          className: 'bg-purple-500 text-white px-3 py-1 rounded hover:bg-purple-600',
+          className: 'bg-purple-500 text-white px-3 py-1 rounded hover:bg-purple-600 flex items-center',
           onClick: this.props.onViewQR,
           'aria-label': 'View QR code'
-        }, 'QR Code'),
+        },
+          React.createElement('i', { className: 'fas fa-qrcode mr-2' }),
+          'QR Code'
+        ),
         React.createElement('button', {
-          className: 'bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600',
+          className: 'bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 flex items-center',
           onClick: this.props.onEditMetadata,
           'aria-label': 'Edit form metadata'
-        }, 'Edit Metadata'),
+        },
+          React.createElement('i', { className: 'fas fa-cog mr-2' }),
+          'Edit Metadata'
+        ),
         React.createElement('button', {
-          className: 'bg-indigo-500 text-white px-3 py-1 rounded hover:bg-indigo-600',
+          className: 'bg-indigo-500 text-white px-3 py-1 rounded hover:bg-indigo-600 flex items-center',
           onClick: function() { window.open('/formfiller.aspx?surveyId=' + this.props.survey.Id, '_blank'); }.bind(this),
           'aria-label': 'Fill form'
-        }, 'Fill Form'),
+        },
+          React.createElement('i', { className: 'fas fa-pen mr-2' }),
+          'Fill Form'
+        ),
         this.props.survey.AuthorId === this.props.currentUserId && React.createElement('button', {
-          className: 'bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600',
+          className: 'bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 flex items-center',
           onClick: this.props.onDelete,
           'aria-label': 'Delete form'
-        }, 'Delete')
+        },
+          React.createElement('i', { className: 'fas fa-trash mr-2' }),
+          'Delete'
+        )
       )
     );
   }
@@ -214,7 +240,7 @@ class QRModal extends React.Component {
   render() {
     var _this = this;
     return React.createElement('div', {
-      className: 'fixed inset-0 flex items-center justify-center z-1000 bg-black/50'
+      className: 'fixed inset-0 flex items-center justify-center z-1200 bg-black/50'
     },
       React.createElement('div', {
         className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl'
@@ -228,7 +254,9 @@ class QRModal extends React.Component {
             className: 'text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full w-8 h-8 flex items-center justify-center',
             onClick: this.props.onClose,
             'aria-label': 'Close QR modal'
-          }, '\u00D7')
+          },
+            React.createElement('i', { className: 'fas fa-times' })
+          )
         ),
         React.createElement('div', { className: 'p-6 flex justify-center' },
           React.createElement('canvas', { id: 'qr-' + this.props.survey.Id })
@@ -236,22 +264,31 @@ class QRModal extends React.Component {
         React.createElement('div', { className: 'p-4 border-t bg-gray-50 flex justify-end gap-3' },
           React.createElement('button', {
             type: 'button',
-            className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition',
+            className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center',
             onClick: this.copyURL.bind(this),
             'aria-label': 'Copy form URL'
-          }, 'Copy URL'),
+          },
+            React.createElement('i', { className: 'fas fa-copy mr-2' }),
+            'Copy URL'
+          ),
           React.createElement('button', {
             type: 'button',
-            className: 'bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 transition',
+            className: 'bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 flex items-center',
             onClick: this.downloadQR.bind(this),
             'aria-label': 'Download QR code'
-          }, 'Download'),
+          },
+            React.createElement('i', { className: 'fas fa-download mr-2' }),
+            'Download'
+          ),
           React.createElement('button', {
             type: 'button',
-            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 transition',
+            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 flex items-center',
             onClick: this.props.onClose,
             'aria-label': 'Close QR modal'
-          }, 'Close')
+          },
+            React.createElement('i', { className: 'fas fa-times mr-2' }),
+            'Close'
+          )
         )
       )
     );
@@ -262,7 +299,7 @@ class QRModal extends React.Component {
 class DeleteModal extends React.Component {
   render() {
     return React.createElement('div', {
-      className: 'fixed inset-0 flex items-center justify-center z-1000 bg-black/50'
+      className: 'fixed inset-0 flex items-center justify-center z-1200 bg-black/50'
     },
       React.createElement('div', {
         className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl'
@@ -278,7 +315,9 @@ class DeleteModal extends React.Component {
             className: 'text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full w-8 h-8 flex items-center justify-center',
             onClick: this.props.onCancel,
             'aria-label': 'Cancel deletion'
-          }, '\u00D7')
+          },
+            React.createElement('i', { className: 'fas fa-times' })
+          )
         ),
         React.createElement('div', { className: 'p-6' },
           React.createElement('p', { className: 'text-gray-600' },
@@ -288,16 +327,22 @@ class DeleteModal extends React.Component {
         React.createElement('div', { className: 'p-4 border-t bg-gray-50 flex justify-end gap-3' },
           React.createElement('button', {
             type: 'button',
-            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 transition',
+            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 flex items-center',
             onClick: this.props.onConfirm,
             'aria-label': 'Confirm deletion'
-          }, 'Confirm'),
+          },
+            React.createElement('i', { className: 'fas fa-check mr-2' }),
+            'Confirm'
+          ),
           React.createElement('button', {
             type: 'button',
-            className: 'bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 transition',
+            className: 'bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 flex items-center',
             onClick: this.props.onCancel,
             'aria-label': 'Cancel deletion'
-          }, 'Cancel')
+          },
+            React.createElement('i', { className: 'fas fa-times mr-2' }),
+            'Cancel'
+          )
         )
       )
     );
@@ -489,7 +534,7 @@ class EditModal extends React.Component {
   render() {
     var _this = this;
     return React.createElement('div', {
-      className: 'fixed inset-0 flex items-center justify-center z-1000 bg-black/50'
+      className: 'fixed inset-0 flex items-center justify-center z-1200 bg-black/50'
     },
       React.createElement('div', {
         className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl'
@@ -506,7 +551,9 @@ class EditModal extends React.Component {
             className: 'text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full w-8 h-8 flex items-center justify-center',
             onClick: this.props.onClose,
             'aria-label': 'Close metadata modal'
-          }, '\u00D7')
+          },
+            React.createElement('i', { className: 'fas fa-times' })
+          )
         ),
         React.createElement('div', {
           className: 'p-6 max-h-96 overflow-y-auto'
@@ -524,7 +571,7 @@ class EditModal extends React.Component {
                   'aria-label': 'Search for users'
                 }),
                 this.state.isLoadingUsers && React.createElement('div', { className: 'absolute top-2 right-2' },
-                  React.createElement('div', { className: 'animate-spin rounded-full h-5 w-5 border-t-2 border-blue-500' })
+                  React.createElement('i', { className: 'fas fa-spinner fa-spin' })
                 ),
                 this.state.showDropdown && this.state.searchResults.length > 0 && React.createElement('ul', {
                   className: 'absolute z-10 w-full bg-white border rounded mt-1 max-h-48 overflow-y-auto shadow-lg'
@@ -555,7 +602,7 @@ class EditModal extends React.Component {
                           className: 'ml-2 text-red-600 hover:text-red-800 font-bold',
                           disabled: user.Id === _this.props.currentUserId,
                           'aria-label': 'Remove ' + user.Title + ' from owners'
-                        }, user.Id === _this.props.currentUserId ? '' : '\u00D7')
+                        }, user.Id === _this.props.currentUserId ? '' : React.createElement('i', { className: 'fas fa-times' }))
                       );
                     })
               )
@@ -599,25 +646,31 @@ class EditModal extends React.Component {
         },
           React.createElement('button', {
             type: 'button',
-            className: 'bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 transition' + (this.state.isSaving ? ' opacity-50 cursor-not-allowed' : ''),
+            className: 'bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 flex items-center' + (this.state.isSaving ? ' opacity-50 cursor-not-allowed' : ''),
             onClick: this.handleSave.bind(this),
             disabled: this.state.isSaving,
             'aria-label': 'Save metadata'
           },
             this.state.isSaving
               ? [
-                  React.createElement('div', { className: 'animate-spin rounded-full h-5 w-5 border-t-2 border-white mr-2', key: 'spinner' }),
+                  React.createElement('i', { className: 'fas fa-spinner fa-spin mr-2', key: 'spinner' }),
                   'Saving...'
                 ]
-              : 'Save'
+              : [
+                  React.createElement('i', { className: 'fas fa-save mr-2', key: 'save-icon' }),
+                  'Save'
+                ]
           ),
           React.createElement('button', {
             type: 'button',
-            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 transition',
+            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 flex items-center',
             onClick: this.props.onClose,
             disabled: this.state.isSaving,
             'aria-label': 'Cancel metadata edit'
-          }, 'Cancel')
+          },
+            React.createElement('i', { className: 'fas fa-times mr-2' }),
+            'Cancel'
+          )
         )
       )
     );
@@ -629,7 +682,7 @@ class FormFillerComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-16 md:mt-0' },
+    return React.createElement('div', { className: 'p-4 mt-20 md:mt-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Filler'),
       React.createElement('p', null, 'Filling form ID: ' + (surveyId || 'N/A'))
     );
@@ -640,7 +693,7 @@ class BuilderComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-16 md:mt-0' },
+    return React.createElement('div', { className: 'p-4 mt-20 md:mt-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Builder'),
       React.createElement('p', null, surveyId ? 'Editing form ID: ' + surveyId : 'Creating new form')
     );
@@ -651,7 +704,7 @@ class ResponseComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-16 md:mt-0' },
+    return React.createElement('div', { className: 'p-4 mt-20 md:mt-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Responses'),
       React.createElement('p', null, 'Viewing responses for form ID: ' + (surveyId || 'N/A'))
     );
@@ -808,14 +861,17 @@ class App extends React.Component {
     } else if (this.state.currentPage.includes('/response')) {
       content = React.createElement(ResponseComponent);
     } else {
-      content = React.createElement('div', { className: 'p-4 mt-16 md:mt-0' },
-        React.createElement('div', { className: 'flex justify-between items-center mb-4' },
+      content = React.createElement('div', { className: 'p-4 mt-20 md:mt-0 z-0' },
+        React.createElement('div', { className: 'flex justify-between items-center mb-4 z-10 relative' },
           React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
           React.createElement('button', {
-            className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition',
+            className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center z-10',
             onClick: function() { window.open('/builder.aspx', '_blank'); },
             'aria-label': 'Create new form'
-          }, 'Create New Form')
+          },
+            React.createElement('i', { className: 'fas fa-plus mr-2' }),
+            'Create New Form'
+          )
         ),
         React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4' },
           this.state.filteredSurveys.map(function(survey) {
@@ -834,9 +890,9 @@ class App extends React.Component {
     }
     return React.createElement('div', { className: 'min-h-screen bg-gray-100' },
       React.createElement(TopNav, { currentUserName: this.state.currentUserName }),
-      React.createElement('div', { className: 'flex pt-16 md:pt-0' },
+      React.createElement('div', { className: 'flex pt-20 md:pt-0' },
         React.createElement(SideNav, { onFilter: this.handleFilter.bind(this) }),
-        React.createElement('main', { className: 'flex-1 p-4' }, content)
+        React.createElement('main', { className: 'flex-1 p-4 z-0' }, content)
       ),
       this.state.notifications.map(function(notification) {
         return React.createElement(Notification, {
