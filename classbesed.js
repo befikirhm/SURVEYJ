@@ -10,6 +10,15 @@ function getDigest() {
   });
 }
 
+// CSS override for SharePoint elements
+const sharePointStyles = `
+  #s4-ribbonrow { display: none !important; }
+  #s4-workspace { overflow: visible !important; }
+`;
+const styleSheet = document.createElement('style');
+styleSheet.textContent = sharePointStyles;
+document.head.appendChild(styleSheet);
+
 // Notification component
 class Notification extends React.Component {
   render() {
@@ -25,8 +34,9 @@ class Notification extends React.Component {
 // TopNav component with logo and "Forms"
 class TopNav extends React.Component {
   componentDidMount() {
-    // Log TopNav height for debugging
+    // Log TopNav and ribbon height for debugging
     console.log('TopNav height:', document.querySelector('.bg-blue-600')?.offsetHeight || 'Not rendered');
+    console.log('Ribbon height:', document.querySelector('#s4-ribbonrow')?.offsetHeight || 'No ribbon');
   }
   render() {
     return React.createElement('nav', {
@@ -71,7 +81,7 @@ class SideNav extends React.Component {
         (this.state.isOpen ? 'block' : 'hidden')
     },
       React.createElement('button', {
-        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-40 z-1100 flex items-center',
+        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-64 z-1100 flex items-center',
         onClick: this.toggleSidebar,
         'aria-label': this.state.isOpen ? 'Collapse sidebar' : 'Expand sidebar'
       },
@@ -353,7 +363,7 @@ class DeleteModal extends React.Component {
   }
 }
 
-// EditModal component with User Profile Service search
+// EditModal component with fixed handleUserRemove
 class EditModal extends React.Component {
   constructor(props) {
     super(props);
@@ -450,9 +460,11 @@ class EditModal extends React.Component {
     }
     this.setState({
       form: Object.assign({}, this.state.form, {
-        Owners: this.state.form.Owners.filter(function(o) { return o.Id !== userId; })
+        Owners: this.state.form.Owners.filter(function(o) {
+          return o.Id !== userId;
+        })
       })
-    );
+    });
   }
   handleSave() {
     var _this = this;
@@ -692,13 +704,12 @@ class EditModal extends React.Component {
 // Placeholder components for ASPX pages
 class FormFillerComponent extends React.Component {
   componentDidMount() {
-    // Log content position for debugging
     console.log('FormFiller top:', document.querySelector('.min-h-screen')?.getBoundingClientRect().top || 'Not rendered');
   }
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-40 md:mt-0 min-h-screen relative z-0' },
+    return React.createElement('div', { className: 'p-4 mt-64 md:mt-0 min-h-screen relative z-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Filler'),
       React.createElement('p', null, 'Filling form ID: ' + (surveyId || 'N/A'))
     );
@@ -712,7 +723,7 @@ class BuilderComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-40 md:mt-0 min-h-screen relative z-0' },
+    return React.createElement('div', { className: 'p-4 mt-64 md:mt-0 min-h-screen relative z-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Builder'),
       React.createElement('p', null, surveyId ? 'Editing form ID: ' + surveyId : 'Creating new form')
     );
@@ -726,7 +737,7 @@ class ResponseComponent extends React.Component {
   render() {
     const params = new URLSearchParams(window.location.search);
     const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-40 md:mt-0 min-h-screen relative z-0' },
+    return React.createElement('div', { className: 'p-4 mt-64 md:mt-0 min-h-screen relative z-0' },
       React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Responses'),
       React.createElement('p', null, 'Viewing responses for form ID: ' + (surveyId || 'N/A'))
     );
@@ -888,11 +899,11 @@ class App extends React.Component {
     } else if (this.state.currentPage.includes('/response')) {
       content = React.createElement(ResponseComponent);
     } else {
-      content = React.createElement('div', { className: 'p-4 mt-40 md:mt-0 min-h-screen relative z-0' },
-        React.createElement('div', { className: 'flex justify-between items-center mb-4 relative z-20' },
+      content = React.createElement('div', { className: 'p-4 mt-64 md:mt-0 min-h-screen relative z-0' },
+        React.createElement('div', { className: 'flex justify-between items-center mb-4 relative z-30' },
           React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
           React.createElement('button', {
-            className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center z-20',
+            className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center z-30',
             onClick: function() { window.open('/builder.aspx', '_blank'); },
             'aria-label': 'Create new form'
           },
@@ -917,7 +928,7 @@ class App extends React.Component {
     }
     return React.createElement('div', { className: 'min-h-screen bg-gray-100 relative' },
       React.createElement(TopNav, { currentUserName: this.state.currentUserName }),
-      React.createElement('div', { className: 'flex pt-40 md:pt-0 !important' },
+      React.createElement('div', { className: 'flex pt-64 md:pt-0 !important' },
         React.createElement(SideNav, { onFilter: this.handleFilter.bind(this) }),
         React.createElement('main', { className: 'flex-1 p-4 relative z-0 min-h-screen' }, content)
       ),
