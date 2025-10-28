@@ -2,29 +2,25 @@
   SHAREPOINT 2016 ON-PREM DASHBOARD – REACT + JSOM (FULLY FIXED)
   ----------------------------------------------------
   • Works on SP 2016 On-Prem
-  • JSOM for break inheritance + grant Edit
-  • React UI fully preserved
+  • JSOM for permissions
   • surveyData column
-  • No page break on typing
-  • Isolated from SharePoint DOM
+  • NO PAGE BREAK ON TYPING
+  • Debounced inputs
+  • SharePoint DOM isolated
 =====================================================================*/
 
 // -------------------------------------------------------------------
-// 1. ISOLATE REACT FROM SHAREPOINT DOM
+// 1. PREVENT SHAREPOINT FROM INTERFERING (CRITICAL)
 // -------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
-  // Wait for SP.js to be fully loaded
   SP.SOD.executeFunc('sp.js', 'SP.ClientContext', () => {
-    const root = document.getElementById('root');
-    if (root) {
-      ReactDOM.render(React.createElement(App), root);
-    } else {
-      console.error('React root not found');
-    }
+    // Disable SharePoint postback & layout
+    if (window.g_wpPostbackSettings) window.g_wpPostbackSettings = null;
+    if (window._spBodyOnLoadCalled) window._spBodyOnLoadCalled = false;
   });
 });
 
-// Prevent SharePoint from stealing focus
+// Prevent SharePoint focus stealing
 document.addEventListener('focusin', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
     e.stopPropagation();
@@ -41,11 +37,10 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
     const list = web.get_lists().getByTitle('Surveys');
     const item = list.getItemById(itemId);
 
-    // Break inheritance, keep author
-    item.breakRoleInheritance(true, false);
+    item.breakRoleInheritance(true, false); // keep author
 
     const roleDefs = web.get_roleDefinitions();
-    const editRole = roleDefs.getByType(SP.RoleType.contributor); // Edit
+    const editRole = roleDefs.getByType(SP.RoleType.contributor);
     const roleBinding = SP.RoleDefinitionBindingCollection.newObject(context);
     roleBinding.add(editRole);
 
@@ -81,13 +76,14 @@ faLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all
 document.head.appendChild(faLink);
 
 // -------------------------------------------------------------------
-// 4. SHAREPOINT UI OVERRIDES (HIDE RIBBON, KEEP ALIVE)
+// 4. SHAREPOINT UI OVERRIDES
 // -------------------------------------------------------------------
 const sharePointStyles = `
-  #s4-ribbonrow, #s4-titlerow, #suiteBar, #suiteBarButtons, #s4-ribbonrow .ms-siteactions-root, #siteIcon, #suiteLinksBox { display: none !important; }
-  #s4-workspace { visibility: hidden !important; }
-  #react-app-container { all: initial; display: block; }
-  body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+  #s4-ribbonrow, #s4-titlerow, #s4-leftpanel, #s4-workspace, 
+  #suiteBar, #suiteBarButtons, #siteIcon, #suiteLinksBox, 
+  #MSOZoneCell_WebPart, .ms-siteactions-root { display: none !important; }
+  body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  #react-app-container { all: initial; display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #f3f4f6; z-index: 9999; }
 `;
 const styleSheet = document.createElement('style');
 styleSheet.textContent = sharePointStyles;
@@ -232,27 +228,22 @@ class SurveyCard extends React.Component {
           className: 'bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 flex items-center text-xs md:text-sm',
           onClick: () => window.open('/builder.aspx?surveyId=' + this.props.survey.Id, '_blank')
         }, React.createElement('i', { className: 'fas fa-edit mr-2' }), 'Edit Form'),
-
         React.createElement('button', {
           className: 'bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 flex items-center text-xs md:text-sm',
           onClick: () => window.open('/response.aspx?surveyId=' + this.props.survey.Id, '_blank')
         }, React.createElement('i', { className: 'fas fa-chart-bar mr-2' }), 'View Report'),
-
         React.createElement('button', {
           className: 'bg-purple-500 text-white px-3 py-1 rounded hover:bg-purple-600 flex items-center text-xs md:text-sm',
           onClick: this.props.onViewQR
         }, React.createElement('i', { className: 'fas fa-qrcode mr-2' }), 'QR Code'),
-
         React.createElement('button', {
           className: 'bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 flex items-center text-xs md:text-sm',
           onClick: this.props.onEditMetadata
         }, React.createElement('i', { className: 'fas fa-cog mr-2' }), 'Edit Metadata'),
-
         React.createElement('button', {
           className: 'bg-indigo-500 text-white px-3 py-1 rounded hover:bg-indigo-600 flex items-center text-xs md:text-sm',
           onClick: () => window.open('/formfiller.aspx?surveyId=' + this.props.survey.Id, '_blank')
         }, React.createElement('i', { className: 'fas fa-pen mr-2' }), 'Fill Form'),
-
         this.props.survey.AuthorId === this.props.currentUserId && React.createElement('button', {
           className: 'bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 flex items-center text-xs md:text-sm',
           onClick: this.props.onDelete
@@ -362,7 +353,7 @@ class DeleteModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 11. CREATE FORM MODAL – JSOM PERMISSIONS
+// 11. CREATE FORM MODAL – DEBOUNCED TITLE INPUT
 // -------------------------------------------------------------------
 class CreateFormModal extends React.Component {
   constructor(props) {
@@ -482,6 +473,25 @@ class CreateFormModal extends React.Component {
 
   render() {
     const _this = this;
+
+    // DEBOUNCED TITLE INPUT
+    const titleInput = (function() {
+      let timeout;
+      return {
+        type: 'text',
+        value: _this.state.form.Title,
+        onChange: function(e) {
+          clearTimeout(timeout);
+          const value = e.target.value;
+          timeout = setTimeout(() => {
+            _this.setState(prev => ({ form: { ...prev.form, Title: value } }));
+          }, 50);
+        },
+        className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
+        placeholder: 'Enter form title...'
+      };
+    })();
+
     return React.createElement('div', { className: 'fixed inset-0 flex items-center justify-center z-1200 bg-black/50' },
       React.createElement('div', { className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl' },
         React.createElement('div', { className: 'flex justify-between items-center p-4 border-b bg-gray-100' },
@@ -496,13 +506,9 @@ class CreateFormModal extends React.Component {
           React.createElement('div', { className: 'space-y-4' },
             React.createElement('div', null,
               React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Title *'),
-              React.createElement('input', {
-                type: 'text',
-                value: this.state.form.Title,
-                onChange: e => _this.setState({ form: { ..._this.state.form, Title: e.target.value } }),
-                className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
-              })
+              React.createElement('input', titleInput)
             ),
+            // ... rest of inputs (Owners, Dates) unchanged
             React.createElement('div', null,
               React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Owners'),
               React.createElement('div', { className: 'relative' },
@@ -585,7 +591,7 @@ class CreateFormModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 12. EDIT METADATA MODAL – JSOM PERMISSIONS
+// 12. EDIT METADATA MODAL – DEBOUNCED TITLE INPUT
 // -------------------------------------------------------------------
 class EditModal extends React.Component {
   constructor(props) {
@@ -707,6 +713,23 @@ class EditModal extends React.Component {
     const _this = this;
     const isAuthor = this.props.survey.AuthorId === this.props.currentUserId;
 
+    // DEBOUNCED TITLE INPUT
+    const titleInput = (function() {
+      let timeout;
+      return {
+        type: 'text',
+        value: _this.state.form.Title,
+        onChange: function(e) {
+          clearTimeout(timeout);
+          const value = e.target.value;
+          timeout = setTimeout(() => {
+            _this.setState(prev => ({ form: { ...prev.form, Title: value } }));
+          }, 50);
+        },
+        className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
+      };
+    })();
+
     return React.createElement('div', { className: 'fixed inset-0 flex items-center justify-center z-1200 bg-black/50' },
       React.createElement('div', { className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl' },
         React.createElement('div', { className: 'flex justify-between items-center p-4 border-b bg-gray-100' },
@@ -721,13 +744,9 @@ class EditModal extends React.Component {
           React.createElement('div', { className: 'space-y-4' },
             React.createElement('div', null,
               React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Title *'),
-              React.createElement('input', {
-                type: 'text',
-                value: this.state.form.Title,
-                onChange: e => _this.setState({ form: { ..._this.state.form, Title: e.target.value } }),
-                className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
-              })
+              React.createElement('input', titleInput)
             ),
+            // ... rest of inputs unchanged
             React.createElement('div', null,
               React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Owners'),
               isAuthor
@@ -989,3 +1008,15 @@ class App extends React.Component {
     );
   }
 }
+
+// -------------------------------------------------------------------
+// RENDER AFTER SP.JS
+// -------------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', () => {
+  SP.SOD.executeFunc('sp.js', 'SP.ClientContext', () => {
+    const root = document.getElementById('root');
+    if (root) {
+      ReactDOM.render(React.createElement(App), root);
+    }
+  });
+});
