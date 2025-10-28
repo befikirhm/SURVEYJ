@@ -1,16 +1,47 @@
 /*=====================================================================
-  SHAREPOINT FORMS DASHBOARD – FINAL FULL CODE (surveyData)
+  SHAREPOINT 2016 ON-PREM DASHBOARD – REACT + JSOM
   ----------------------------------------------------
+  • Works on SP 2016 On-Prem
+  • JSOM for break inheritance + grant Edit
+  • React UI fully preserved
+  • surveyData column
   • No login prompt
-  • Non-author owners can edit Title/Dates/Status
-  • Only Author edits Owners
-  • Break inheritance + addroleassignment
-  • Uses surveyData column
-  • All links in new tab
 =====================================================================*/
 
 // -------------------------------------------------------------------
-// 1. UTILITIES
+// 1. JSOM PERMISSION FUNCTION (SP 2016 SAFE)
+// -------------------------------------------------------------------
+function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
+  SP.SOD.executeFunc('sp.js', 'SP.ClientContext', function () {
+    const context = SP.ClientContext.get_current();
+    const web = context.get_web();
+    const list = web.get_lists().getByTitle('Surveys');
+    const item = list.getItemById(itemId);
+
+    // Break inheritance, keep existing roles (author)
+    item.breakRoleInheritance(true, false);
+
+    const roleDefs = web.get_roleDefinitions();
+    const editRole = roleDefs.getByType(SP.RoleType.contributor); // Edit
+74
+    const roleBinding = SP.RoleDefinitionBindingCollection.newObject(context);
+    roleBinding.add(editRole);
+
+    ownerIds.forEach(userId => {
+      const user = web.get_siteUsers().getById(userId);
+      item.get_roleAssignments().add(user, roleBinding);
+    });
+
+    context.load(item);
+    context.executeQueryAsync(onSuccess, (sender, args) => {
+      console.error('JSOM Error:', args.get_message());
+      onError(args.get_message());
+    });
+  });
+}
+
+// -------------------------------------------------------------------
+// 2. UTILITIES
 // -------------------------------------------------------------------
 function getDigest() {
   return jQuery.ajax({
@@ -28,7 +59,7 @@ faLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all
 document.head.appendChild(faLink);
 
 // -------------------------------------------------------------------
-// 2. SHAREPOINT UI OVERRIDES
+// 3. SHAREPOINT UI OVERRIDES
 // -------------------------------------------------------------------
 const sharePointStyles = `
   #s4-ribbonrow, #s4-titlerow { display: none !important; }
@@ -40,7 +71,7 @@ styleSheet.textContent = sharePointStyles;
 document.head.appendChild(styleSheet);
 
 // -------------------------------------------------------------------
-// 3. NOTIFICATION
+// 4. NOTIFICATION
 // -------------------------------------------------------------------
 class Notification extends React.Component {
   render() {
@@ -54,7 +85,7 @@ class Notification extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 4. TOP NAV
+// 5. TOP NAV
 // -------------------------------------------------------------------
 class TopNav extends React.Component {
   render() {
@@ -86,7 +117,7 @@ class TopNav extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 5. SIDE NAV
+// 6. SIDE NAV
 // -------------------------------------------------------------------
 class SideNav extends React.Component {
   constructor(props) {
@@ -132,7 +163,7 @@ class SideNav extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 6. SURVEY CARD
+// 7. SURVEY CARD
 // -------------------------------------------------------------------
 class SurveyCard extends React.Component {
   render() {
@@ -209,7 +240,7 @@ class SurveyCard extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 7. QR MODAL
+// 8. QR MODAL
 // -------------------------------------------------------------------
 class QRModal extends React.Component {
   componentDidMount() {
@@ -271,7 +302,7 @@ class QRModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 8. DELETE MODAL
+// 9. DELETE MODAL
 // -------------------------------------------------------------------
 class DeleteModal extends React.Component {
   render() {
@@ -308,7 +339,7 @@ class DeleteModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 9. CREATE FORM MODAL – BREAK + GRANT + surveyData
+// 10. CREATE FORM MODAL – JSOM PERMISSIONS
 // -------------------------------------------------------------------
 class CreateFormModal extends React.Component {
   constructor(props) {
@@ -333,42 +364,22 @@ class CreateFormModal extends React.Component {
 
   componentDidUpdate(prevProps, prevState) {
     const _this = this;
-    if (prevState.searchTerm !== this.state.searchTerm) {
-      if (!this.state.searchTerm) {
-        this.setState({ searchResults: [], showDropdown: false });
-        return;
-      }
+    if (prevState.searchTerm !== this.state.searchTerm && this.state.searchTerm) {
       clearTimeout(this._debounce);
       this._debounce = setTimeout(() => {
         _this.setState({ isLoadingUsers: true });
         jQuery.ajax({
-          url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/sitegroups?$filter=Title eq '${encodeURIComponent(_spPageContextInfo.webTitle + ' Members')}'`,
+          url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/siteusers?$filter=substringof('${encodeURIComponent(_this.state.searchTerm)}', Title) or substringof('${encodeURIComponent(_this.state.searchTerm)}', LoginName)&$select=Id,Title,LoginName,Email&$top=20`,
           headers: { Accept: 'application/json; odata=verbose' },
           xhrFields: { withCredentials: true }
-        }).then(g => {
-          if (!g.d.results.length) throw new Error('Members group not found');
-          const groupId = g.d.results[0].Id;
-          return jQuery.ajax({
-            url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/sitegroups(${groupId})/users`,
-            headers: { Accept: 'application/json; odata=verbose' },
-            xhrFields: { withCredentials: true }
-          });
-        }).then(u => {
-          const users = u.d.results
-            .filter(x => x.Id && x.Title && x.Title.toLowerCase().includes(_this.state.searchTerm.toLowerCase()))
-            .map(x => ({ Id: x.Id, Title: x.Title }));
+        }).then(data => {
+          const users = data.d.results.map(u => ({ Id: u.Id, Title: u.Title }));
           const available = users.filter(u => !_this.state.form.Owners.some(o => o.Id === u.Id));
-          _this.setState({
-            searchResults: available,
-            isLoadingUsers: false,
-            showDropdown: available.length > 0
-          });
-        }).catch(err => {
-          console.error(err);
-          _this.props.addNotification('Failed to search members.', 'error');
-          _this.setState({ isLoadingUsers: false, showDropdown: false });
-        });
+          _this.setState({ searchResults: available, isLoadingUsers: false, showDropdown: true });
+        }).catch(() => _this.setState({ isLoadingUsers: false, showDropdown: false }));
       }, 300);
+    } else if (!this.state.searchTerm) {
+      this.setState({ searchResults: [], showDropdown: false });
     }
   }
 
@@ -396,68 +407,55 @@ class CreateFormModal extends React.Component {
     if (this.state.form.StartDate && this.state.form.EndDate &&
         new Date(this.state.form.EndDate) <= new Date(this.state.form.StartDate))
       return _this.props.addNotification('End Date must be after Start Date.', 'error');
-    if (!this.state.form.Owners.some(o => o.Id === _this.props.currentUserId))
-      return _this.props.addNotification('You must be an owner.', 'error');
 
     this.setState({ isSaving: true });
 
-    getDigest()
-      .then(digest => {
-        const payload = {
-          __metadata: { type: 'SP.Data.SurveysListItem' },
-          Title: _this.state.form.Title,
-          OwnersId: { results: _this.state.form.Owners.map(o => o.Id) },
-          Status: 'Draft',
-          surveyData: JSON.stringify({ title: _this.state.form.Title })  // ← surveyData
-        };
-        if (_this.state.form.StartDate) payload.StartDate = new Date(_this.state.form.StartDate).toISOString();
-        if (_this.state.form.EndDate)   payload.EndDate   = new Date(_this.state.form.EndDate).toISOString();
+    getDigest().then(digest => {
+      const payload = {
+        __metadata: { type: 'SP.Data.SurveysListItem' },
+        Title: _this.state.form.Title,
+        OwnersId: { results: _this.state.form.Owners.map(o => o.Id) },
+        Status: 'Draft',
+        surveyData: JSON.stringify({ title: _this.state.form.Title })
+      };
+      if (_this.state.form.StartDate) payload.StartDate = new Date(_this.state.form.StartDate).toISOString();
+      if (_this.state.form.EndDate)   payload.EndDate   = new Date(_this.state.form.EndDate).toISOString();
 
-        return jQuery.ajax({
-          url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items`,
-          type: 'POST',
-          data: JSON.stringify(payload),
-          headers: {
-            Accept: 'application/json; odata=verbose',
-            'Content-Type': 'application/json; odata=verbose',
-            'X-RequestDigest': digest
-          },
-          xhrFields: { withCredentials: true }
-        }).then(createResp => {
-          const newItemId = createResp.d.Id;
-
-          // BREAK INHERITANCE + GRANT EDIT
-          return jQuery.ajax({
-            url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items(${newItemId})/breakroleinheritance(copyRoleAssignments=true, clearSubscopes=true)`,
-            type: 'POST',
-            headers: { 'X-RequestDigest': digest, Accept: 'application/json; odata=verbose' },
-            xhrFields: { withCredentials: true }
-          }).then(() => {
-            const ownerIds = _this.state.form.Owners.map(o => o.Id);
-            const addPromises = ownerIds.map(uid =>
-              jQuery.ajax({
-                url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items(${newItemId})/roleassignments/addroleassignment(principalid=${uid}, roledefid=1073741826)`,
-                type: 'POST',
-                headers: { Accept: 'application/json; odata=verbose', 'X-RequestDigest': digest },
-                xhrFields: { withCredentials: true }
-              }).fail(() => {})
-            );
-            return Promise.all(addPromises).then(() => newItemId);
-          });
-        });
-      })
-      .then(finalId => {
-        _this.props.addNotification('Form created! All owners have access.', 'success');
-        window.open(`/builder.aspx?surveyId=${finalId}`, '_blank');
-        _this.props.loadSurveys();
-        _this.props.onClose();
-        _this.setState({ isSaving: false });
-      })
-      .catch(err => {
-        console.error(err);
-        _this.props.addNotification('Failed to create form.', 'error');
-        _this.setState({ isSaving: false });
+      return jQuery.ajax({
+        url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items`,
+        type: 'POST',
+        data: JSON.stringify(payload),
+        headers: {
+          Accept: 'application/json; odata=verbose',
+          'Content-Type': 'application/json; odata=verbose',
+          'X-RequestDigest': digest
+        },
+        xhrFields: { withCredentials: true }
       });
+    }).then(resp => {
+      const newItemId = resp.d.Id;
+
+      // === JSOM GRANT PERMISSIONS ===
+      grantEditPermissionToOwners(
+        newItemId,
+        _this.state.form.Owners.map(o => o.Id),
+        () => {
+          _this.props.addNotification('Form created! All owners have access.', 'success');
+          window.open(`/builder.aspx?surveyId=${newItemId}`, '_blank');
+          _this.props.loadSurveys();
+          _this.props.onClose();
+          _this.setState({ isSaving: false });
+        },
+        err => {
+          _this.props.addNotification('Permission failed: ' + err, 'error');
+          _this.setState({ isSaving: false });
+        }
+      );
+    }).catch(err => {
+      console.error(err);
+      _867_this.props.addNotification('Failed to create form.', 'error');
+      _this.setState({ isSaving: false });
+    });
   }
 
   render() {
@@ -490,7 +488,7 @@ class CreateFormModal extends React.Component {
                   type: 'text',
                   value: this.state.searchTerm,
                   onChange: e => _this.setState({ searchTerm: e.target.value }),
-                  placeholder: 'Search site members...',
+                  placeholder: 'Search users...',
                   className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
                 }),
                 this.state.isLoadingUsers && React.createElement('div', { className: 'absolute top-2 right-2' },
@@ -565,7 +563,7 @@ class CreateFormModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 10. EDIT METADATA MODAL – BREAK + GRANT + surveyData
+// 11. EDIT METADATA MODAL – JSOM PERMISSIONS
 // -------------------------------------------------------------------
 class EditModal extends React.Component {
   constructor(props) {
@@ -591,42 +589,22 @@ class EditModal extends React.Component {
 
   componentDidUpdate(prevProps, prevState) {
     const _this = this;
-    if (prevState.searchTerm !== this.state.searchTerm) {
-      if (!this.state.searchTerm) {
-        this.setState({ searchResults: [], showDropdown: false });
-        return;
-      }
+    if (prevState.searchTerm !== this.state.searchTerm && this.state.searchTerm) {
       clearTimeout(this._debounce);
       this._debounce = setTimeout(() => {
         _this.setState({ isLoadingUsers: true });
         jQuery.ajax({
-          url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/sitegroups?$filter=Title eq '${encodeURIComponent(_spPageContextInfo.webTitle + ' Members')}'`,
+          url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/siteusers?$filter=substringof('${encodeURIComponent(_this.state.searchTerm)}', Title) or substringof('${encodeURIComponent(_this.state.searchTerm)}', LoginName)&$select=Id,Title,LoginName,Email&$top=20`,
           headers: { Accept: 'application/json; odata=verbose' },
           xhrFields: { withCredentials: true }
-        }).then(g => {
-          if (!g.d.results.length) throw new Error('Members group not found');
-          const groupId = g.d.results[0].Id;
-          return jQuery.ajax({
-            url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/sitegroups(${groupId})/users`,
-            headers: { Accept: 'application/json; odata=verbose' },
-            xhrFields: { withCredentials: true }
-          });
-        }).then(u => {
-          const users = u.d.results
-            .filter(x => x.Id && x.Title && x.Title.toLowerCase().includes(_this.state.searchTerm.toLowerCase()))
-            .map(x => ({ Id: x.Id, Title: x.Title }));
+        }).then(data => {
+          const users = data.d.results.map(u => ({ Id: u.Id, Title: u.Title }));
           const available = users.filter(u => !_this.state.form.Owners.some(o => o.Id === u.Id));
-          _this.setState({
-            searchResults: available,
-            isLoadingUsers: false,
-            showDropdown: available.length > 0
-          });
-        }).catch(err => {
-          console.error(err);
-          _this.props.addNotification('Failed to search members.', 'error');
-          _this.setState({ isLoadingUsers: false, showDropdown: false });
-        });
+          _this.setState({ searchResults: available, isLoadingUsers: false, showDropdown: true });
+        }).catch(() => _this.setState({ isLoadingUsers: false, showDropdown: false }));
       }, 300);
+    } else if (!this.state.searchTerm) {
+      this.setState({ searchResults: [], showDropdown: false });
     }
   }
 
@@ -656,69 +634,52 @@ class EditModal extends React.Component {
       return _this.props.addNotification('End Date must be after Start Date.', 'error');
 
     const isAuthor = _this.props.survey.AuthorId === _this.props.currentUserId;
-
     this.setState({ isSaving: true });
 
-    getDigest()
-      .then(digest => {
-        const payload = {
-          __metadata: { type: 'SP.Data.SurveysListItem' },
-          Title: _this.state.form.Title,
-          Status: _this.state.form.Status
-        };
-        if (_this.state.form.StartDate) payload.StartDate = new Date(_this.state.form.StartDate).toISOString();
-        if (_this.state.form.EndDate)   payload.EndDate   = new Date(_this.state.form.EndDate).toISOString();
+    getDigest().then(digest => {
+      const payload = {
+        __metadata: { type: 'SP.Data.SurveysListItem' },
+        Title: _this.state.form.Title,
+        Status: _this.state.form.Status
+      };
+      if (_this.state.form.StartDate) payload.StartDate = new Date(_this.state.form.StartDate).toISOString();
+      if (_this.state.form.EndDate)   payload.EndDate   = new Date(_this.state.form.EndDate).toISOString();
+      if (isAuthor) payload.OwnersId = { results: _this.state.form.Owners.map(o => o.Id) };
 
-        if (isAuthor) {
-          payload.OwnersId = { results: _this.state.form.Owners.map(o => o.Id) };
-        }
-
-        return jQuery.ajax({
-          url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items(${_this.props.survey.Id})`,
-          type: 'POST',
-          data: JSON.stringify(payload),
-          headers: {
-            Accept: 'application/json; odata=verbose',
-            'Content-Type': 'application/json; odata=verbose',
-            'X-HTTP-Method': 'MERGE',
-            'If-Match': '*',
-            'X-RequestDigest': digest
-          },
-          xhrFields: { withCredentials: true }
-        })
-        .then(() => {
-          // BREAK INHERITANCE + GRANT EDIT
-          return jQuery.ajax({
-            url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items(${_this.props.survey.Id})/breakroleinheritance(copyRoleAssignments=true, clearSubscopes=true)`,
-            type: 'POST',
-            headers: { 'X-RequestDigest': digest, Accept: 'application/json; odata=verbose' },
-            xhrFields: { withCredentials: true }
-          }).then(() => {
-            const ownerIds = _this.state.form.Owners.map(o => o.Id);
-            const addPromises = ownerIds.map(uid =>
-              jQuery.ajax({
-                url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items(${_this.props.survey.Id})/roleassignments/addroleassignment(principalid=${uid}, roledefid=1073741826)`,
-                type: 'POST',
-                headers: { Accept: 'application/json; odata=verbose', 'X-RequestDigest': digest },
-                xhrFields: { withCredentials: true }
-              }).fail(() => {})
-            );
-            return Promise.all(addPromises);
-          });
-        });
-      })
-      .then(() => {
-        _this.props.addNotification('Form updated! All owners have access.', 'success');
-        setTimeout(() => _this.props.loadSurveys(), 1000);
-        _this.props.onClose();
-        _this.setState({ isSaving: false });
-      })
-      .catch(err => {
-        console.error('Save failed:', err);
-        const msg = err.status === 403 ? 'No permission to update owners.' : (err.responseText || 'Unknown error');
-        _this.props.addNotification(`Save failed: ${msg}`, 'error');
-        _this.setState({ isSaving: false });
+      return jQuery.ajax({
+        url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items(${_this.props.survey.Id})`,
+        type: 'POST',
+        data: JSON.stringify(payload),
+        headers: {
+          Accept: 'application/json; odata=verbose',
+          'Content-Type': 'application/json; odata=verbose',
+          'X-HTTP-Method': 'MERGE',
+          'If-Match': '*',
+          'X-RequestDigest': digest
+        },
+        xhrFields: { withCredentials: true }
       });
+    }).then(() => {
+      // === JSOM GRANT PERMISSIONS ===
+      grantEditPermissionToOwners(
+        _this.props.survey.Id,
+        _this.state.form.Owners.map(o => o.Id),
+        () => {
+          _this.props.addNotification('Form updated! All owners have access.', 'success');
+          setTimeout(() => _this.props.loadSurveys(), 1000);
+          _this.props.onClose();
+          _this.setState({ isSaving: false });
+        },
+        err => {
+          _this.props.addNotification('Permission failed: ' + err, 'error');
+          _this.setState({ isSaving: false });
+        }
+      );
+    }).catch(err => {
+      console.error(err);
+      _this.props.addNotification('Save failed.', 'error');
+      _this.setState({ isSaving: false });
+    });
   }
 
   render() {
@@ -755,7 +716,7 @@ class EditModal extends React.Component {
                         type: 'text',
                         value: this.state.searchTerm,
                         onChange: e => _this.setState({ searchTerm: e.target.value }),
-                        placeholder: 'Search site members...',
+                        placeholder: 'Search users...',
                         className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
                       }),
                       this.state.isLoadingUsers && React.createElement('div', { className: 'absolute top-2 right-2' },
@@ -850,7 +811,7 @@ class EditModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 11. MAIN APP
+// 12. MAIN APP
 // -------------------------------------------------------------------
 class App extends React.Component {
   constructor(props) {
@@ -880,13 +841,6 @@ class App extends React.Component {
     }).done(d => _this.setState({ currentUserId: d.d.Id, currentUserName: d.d.Title }));
 
     this.loadSurveys();
-
-    document.addEventListener('click', e => {
-      if (_this.state.isSidebarOpen && window.innerWidth < 768 &&
-          !e.target.closest('.bg-gray-800') && !e.target.closest('button[aria-label*="sidebar"]')) {
-        _this.toggleSidebar();
-      }
-    });
   }
 
   loadSurveys() {
@@ -911,7 +865,7 @@ class App extends React.Component {
       )).then(updated => {
         _this.setState({ surveys: updated, filteredSurveys: updated });
       });
-    }).fail(err => _this.addNotification('Failed to load forms.', 'error'));
+    }).fail(() => _this.addNotification('Failed to load forms.', 'error'));
   }
 
   addNotification(msg, type = 'success') {
@@ -925,7 +879,7 @@ class App extends React.Component {
     getDigest().then(digest => jQuery.ajax({
       url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items(${id})`,
       type: 'POST',
-      headers: { 'X-HTTP-Method': 'DELETE', 'If-Match': '*', 'X-RequestDigest': digest, Accept: 'application/json; odata=verbose' },
+      headers: { 'X-HTTP-Method': 'DELETE', 'If-Match': '*', 'X-RequestDigest': digest },
       xhrFields: { withCredentials: true }
     }).done(() => { this.addNotification('Form deleted!'); this.loadSurveys(); })
       .fail(() => this.addNotification('Delete failed.', 'error')));
