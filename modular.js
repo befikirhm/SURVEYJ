@@ -10,6 +10,12 @@ function getDigest() {
   });
 }
 
+// Load Font Awesome for icons
+const faLink = document.createElement('link');
+faLink.rel = 'stylesheet';
+faLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
+document.head.appendChild(faLink);
+
 // CSS override for SharePoint elements
 const sharePointStyles = `
   #s4-ribbonrow, #s4-titlerow { display: none !important; }
@@ -32,7 +38,7 @@ class Notification extends React.Component {
   }
 }
 
-// TopNav component
+// TopNav component with mobile toggle
 class TopNav extends React.Component {
   componentDidMount() {
     console.log('TopNav height:', document.querySelector('.bg-blue-600')?.offsetHeight || 'Not rendered');
@@ -42,55 +48,49 @@ class TopNav extends React.Component {
     return React.createElement('nav', {
       className: 'bg-blue-600 text-white p-4 flex justify-between items-center fixed top-0 left-0 right-0 z-1000 h-16'
     },
-      React.createElement('div', { className: 'flex items-center' },
+      // Mobile hamburger toggle
+      React.createElement('button', {
+        className: 'md:hidden text-white p-2 rounded focus:outline-none focus:ring-2 focus:ring-white',
+        onClick: this.props.onToggleSidebar,
+        'aria-label': this.props.isSidebarOpen ? 'Close sidebar' : 'Open sidebar'
+      },
+        React.createElement('i', {
+          className: this.props.isSidebarOpen ? 'fas fa-times text-xl' : 'fas fa-bars text-xl'
+        })
+      ),
+      React.createElement('div', { className: 'flex items-center flex-1 justify-center md:justify-start' },
         React.createElement('img', {
           src: '/SiteAssets/logo.png',
           alt: 'Forms Logo',
           className: 'h-8 mr-2'
         }),
-        React.createElement('div', { className: 'text-lg font-bold' }, 'Forms')
+        React.createElement('div', { className: 'text-lg font-bold hidden md:block' }, 'Forms')  // Hide title on very small mobile for space
       ),
       React.createElement('div', null,
-        React.createElement('span', { className: 'mr-4' }, 'Welcome, ' + this.props.currentUserName)
+        React.createElement('span', { className: 'mr-4 hidden md:inline' }, 'Welcome, ' + this.props.currentUserName)
       )
     );
   }
 }
 
-// SideNav component
+// SideNav component - transform for mobile overlay
 class SideNav extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      isOpen: false,
       searchTerm: '',
       selectedFilter: 'All'
     };
-    this.toggleSidebar = this.toggleSidebar.bind(this);
-  }
-  toggleSidebar() {
-    console.log('Toggling sidebar, current isOpen:', this.state.isOpen);
-    this.setState({ isOpen: !this.state.isOpen }, () => {
-      console.log('Sidebar toggled, new isOpen:', this.state.isOpen);
-    });
   }
   render() {
     var _this = this;
-    return React.createElement('div', {
-      className: 'bg-gray-800 text-white w-64 h-screen fixed top-0 left-0 md:static md:block z-900 ' +
-        (this.state.isOpen ? 'block' : 'hidden')
-    },
-      React.createElement('button', {
-        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-80 z-1100 flex items-center',
-        onClick: this.toggleSidebar,
-        'aria-label': this.state.isOpen ? 'Collapse sidebar' : 'Expand sidebar'
-      },
-        React.createElement('i', {
-          className: this.state.isOpen ? 'fas fa-times mr-2' : 'fas fa-bars mr-2'
-        }),
-        this.state.isOpen ? 'Collapse' : 'Expand'
-      ),
-      React.createElement('div', { className: 'p-4' },
+    const sidebarClass = `bg-gray-800 text-white w-64 h-screen fixed top-0 left-0 md:static md:translate-x-0 z-900 transform transition-transform duration-300 ease-in-out ${
+      this.props.isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+    } ${!this.props.isOpen ? 'md:w-auto' : ''}`;  // Overlay on mobile, static on desktop
+
+    return React.createElement('div', { className: sidebarClass },
+      // No toggle here - moved to TopNav
+      React.createElement('div', { className: 'p-4 overflow-y-auto h-full' },
         React.createElement('div', { className: 'mb-4' },
           React.createElement('input', {
             type: 'text',
@@ -168,7 +168,7 @@ class SurveyCard extends React.Component {
       ),
       React.createElement('div', { className: 'p-4 border-t bg-gray-50 flex gap-2 flex-wrap' },
         React.createElement('button', {
-          className: 'bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 flex items-center',
+          className: 'bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 flex items-center text-xs md:text-sm',
           onClick: function() { window.open('/builder.aspx?surveyId=' + this.props.survey.Id, '_blank'); }.bind(this),
           'aria-label': 'Edit form'
         },
@@ -176,7 +176,7 @@ class SurveyCard extends React.Component {
           'Edit Form'
         ),
         React.createElement('button', {
-          className: 'bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 flex items-center',
+          className: 'bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 flex items-center text-xs md:text-sm',
           onClick: function() { window.open('/response.aspx?surveyId=' + this.props.survey.Id, '_blank'); }.bind(this),
           'aria-label': 'View form report'
         },
@@ -184,7 +184,7 @@ class SurveyCard extends React.Component {
           'View Report'
         ),
         React.createElement('button', {
-          className: 'bg-purple-500 text-white px-3 py-1 rounded hover:bg-purple-600 flex items-center',
+          className: 'bg-purple-500 text-white px-3 py-1 rounded hover:bg-purple-600 flex items-center text-xs md:text-sm',
           onClick: this.props.onViewQR,
           'aria-label': 'View QR code'
         },
@@ -192,7 +192,7 @@ class SurveyCard extends React.Component {
           'QR Code'
         ),
         React.createElement('button', {
-          className: 'bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 flex items-center',
+          className: 'bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 flex items-center text-xs md:text-sm',
           onClick: this.props.onEditMetadata,
           'aria-label': 'Edit form metadata'
         },
@@ -200,7 +200,7 @@ class SurveyCard extends React.Component {
           'Edit Metadata'
         ),
         React.createElement('button', {
-          className: 'bg-indigo-500 text-white px-3 py-1 rounded hover:bg-indigo-600 flex items-center',
+          className: 'bg-indigo-500 text-white px-3 py-1 rounded hover:bg-indigo-600 flex items-center text-xs md:text-sm',
           onClick: function() { window.open('/formfiller.aspx?surveyId=' + this.props.survey.Id, '_blank'); }.bind(this),
           'aria-label': 'Fill form'
         },
@@ -208,7 +208,7 @@ class SurveyCard extends React.Component {
           'Fill Form'
         ),
         this.props.survey.AuthorId === this.props.currentUserId && React.createElement('button', {
-          className: 'bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 flex items-center',
+          className: 'bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 flex items-center text-xs md:text-sm',
           onClick: this.props.onDelete,
           'aria-label': 'Delete form'
         },
@@ -805,7 +805,7 @@ class CreateFormModal extends React.Component {
           return o.Id !== userId;
         })
       })
-    });
+    );
   }
   handleSave() {
     var _this = this;
@@ -1049,12 +1049,17 @@ class App extends React.Component {
       viewingQR: null,
       deletingSurvey: null,
       creatingForm: false,
-      currentPage: window.location.pathname
+      currentPage: window.location.pathname,
+      isSidebarOpen: false  // Add sidebar state
     };
     this.loadSurveys = this.loadSurveys.bind(this);
     this.addNotification = this.addNotification.bind(this);
     this.handleDelete = this.handleDelete.bind(this);
     this.handleFilter = this.handleFilter.bind(this);
+    this.toggleSidebar = this.toggleSidebar.bind(this);  // Add toggle method
+  }
+  toggleSidebar() {
+    this.setState(prevState => ({ isSidebarOpen: !prevState.isSidebarOpen }));
   }
   componentDidMount() {
     var _this = this;
@@ -1074,6 +1079,12 @@ class App extends React.Component {
     this.loadSurveys();
     window.addEventListener('popstate', function() {
       _this.setState({ currentPage: window.location.pathname });
+    });
+    // Close sidebar on outside click for mobile
+    document.addEventListener('click', function(e) {
+      if (_this.state.isSidebarOpen && !e.target.closest('.bg-gray-800') && window.innerWidth < 768) {
+        _this.toggleSidebar();
+      }
     });
     setTimeout(() => {
       console.log('Main content top:', document.querySelector('main')?.getBoundingClientRect().top || 'Not rendered');
@@ -1182,7 +1193,7 @@ class App extends React.Component {
   }
   render() {
     var _this = this;
-    var content = React.createElement('div', { className: 'p-4 mt-80 md:mt-0 min-h-screen relative z-0' },
+    var content = React.createElement('div', { className: 'min-h-screen relative z-0' },
       React.createElement('div', { className: 'flex justify-between items-center mb-4 relative z-50' },
         React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
         React.createElement('button', {
@@ -1209,9 +1220,16 @@ class App extends React.Component {
       )
     );
     return React.createElement('div', { className: 'min-h-screen bg-gray-100 relative' },
-      React.createElement(TopNav, { currentUserName: this.state.currentUserName }),
-      React.createElement('div', { className: 'flex pt-80 md:pt-0 !important' },
-        React.createElement(SideNav, { onFilter: this.handleFilter.bind(this) }),
+      React.createElement(TopNav, { 
+        currentUserName: this.state.currentUserName,
+        onToggleSidebar: this.toggleSidebar,
+        isSidebarOpen: this.state.isSidebarOpen 
+      }),
+      React.createElement('div', { className: 'flex pt-16' },
+        React.createElement(SideNav, { 
+          isOpen: this.state.isSidebarOpen,
+          onFilter: this.handleFilter.bind(this) 
+        }),
         React.createElement('main', { className: 'flex-1 p-4 relative z-0 min-h-screen' }, content)
       ),
       this.state.notifications.map(function(notification) {
