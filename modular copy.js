@@ -1,11 +1,11 @@
 /*=====================================================================
-  SHAREPOINT FORMS DASHBOARD – FINAL FULL CODE
+  SHAREPOINT FORMS DASHBOARD – FINAL FULL CODE (surveyData)
   ----------------------------------------------------
   • No login prompt
   • Non-author owners can edit Title/Dates/Status
   • Only Author edits Owners
-  • No break inheritance
-  • Works with item-level permissions
+  • Break inheritance + addroleassignment
+  • Uses surveyData column
   • All links in new tab
 =====================================================================*/
 
@@ -308,7 +308,7 @@ class DeleteModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 9. CREATE FORM MODAL – FINAL
+// 9. CREATE FORM MODAL – BREAK + GRANT + surveyData
 // -------------------------------------------------------------------
 class CreateFormModal extends React.Component {
   constructor(props) {
@@ -408,7 +408,7 @@ class CreateFormModal extends React.Component {
           Title: _this.state.form.Title,
           OwnersId: { results: _this.state.form.Owners.map(o => o.Id) },
           Status: 'Draft',
-          SurveyJson: JSON.stringify({ title: _this.state.form.Title })
+          surveyData: JSON.stringify({ title: _this.state.form.Title })  // ← surveyData
         };
         if (_this.state.form.StartDate) payload.StartDate = new Date(_this.state.form.StartDate).toISOString();
         if (_this.state.form.EndDate)   payload.EndDate   = new Date(_this.state.form.EndDate).toISOString();
@@ -426,19 +426,24 @@ class CreateFormModal extends React.Component {
         }).then(createResp => {
           const newItemId = createResp.d.Id;
 
-          // GRANT EDIT TO ALL OWNERS (NO BREAK INHERITANCE)
-          const ownerIds = _this.state.form.Owners.map(o => o.Id);
-          const addPromises = ownerIds.map(uid =>
-            jQuery.ajax({
-              url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items(${newItemId})/roleassignments/addroleassignment(principalid=${uid}, roledefid=1073741826)`,
-              type: 'POST',
-              headers: { Accept: 'application/json; odata=verbose', 'X-RequestDigest': digest },
-              xhrFields: { withCredentials: true }
-            }).fail(err => {
-              if (err.status !== 400) console.warn(`Grant failed for ${uid}:`, err);
-            })
-          );
-          return Promise.all(addPromises).then(() => newItemId);
+          // BREAK INHERITANCE + GRANT EDIT
+          return jQuery.ajax({
+            url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items(${newItemId})/breakroleinheritance(copyRoleAssignments=true, clearSubscopes=true)`,
+            type: 'POST',
+            headers: { 'X-RequestDigest': digest, Accept: 'application/json; odata=verbose' },
+            xhrFields: { withCredentials: true }
+          }).then(() => {
+            const ownerIds = _this.state.form.Owners.map(o => o.Id);
+            const addPromises = ownerIds.map(uid =>
+              jQuery.ajax({
+                url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items(${newItemId})/roleassignments/addroleassignment(principalid=${uid}, roledefid=1073741826)`,
+                type: 'POST',
+                headers: { Accept: 'application/json; odata=verbose', 'X-RequestDigest': digest },
+                xhrFields: { withCredentials: true }
+              }).fail(() => {})
+            );
+            return Promise.all(addPromises).then(() => newItemId);
+          });
         });
       })
       .then(finalId => {
@@ -560,7 +565,7 @@ class CreateFormModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 10. EDIT METADATA MODAL – FINAL
+// 10. EDIT METADATA MODAL – BREAK + GRANT + surveyData
 // -------------------------------------------------------------------
 class EditModal extends React.Component {
   constructor(props) {
@@ -682,19 +687,24 @@ class EditModal extends React.Component {
           xhrFields: { withCredentials: true }
         })
         .then(() => {
-          // ALWAYS GRANT EDIT TO ALL OWNERS
-          const ownerIds = _this.state.form.Owners.map(o => o.Id);
-          const addPromises = ownerIds.map(uid =>
-            jQuery.ajax({
-              url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items(${_this.props.survey.Id})/roleassignments/addroleassignment(principalid=${uid}, roledefid=1073741826)`,
-              type: 'POST',
-              headers: { Accept: 'application/json; odata=verbose', 'X-RequestDigest': digest },
-              xhrFields: { withCredentials: true }
-            }).fail(err => {
-              if (err.status !== 400) console.warn(`Grant failed for ${uid}:`, err);
-            })
-          );
-          return Promise.all(addPromises);
+          // BREAK INHERITANCE + GRANT EDIT
+          return jQuery.ajax({
+            url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items(${_this.props.survey.Id})/breakroleinheritance(copyRoleAssignments=true, clearSubscopes=true)`,
+            type: 'POST',
+            headers: { 'X-RequestDigest': digest, Accept: 'application/json; odata=verbose' },
+            xhrFields: { withCredentials: true }
+          }).then(() => {
+            const ownerIds = _this.state.form.Owners.map(o => o.Id);
+            const addPromises = ownerIds.map(uid =>
+              jQuery.ajax({
+                url: `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('Surveys')/items(${_this.props.survey.Id})/roleassignments/addroleassignment(principalid=${uid}, roledefid=1073741826)`,
+                type: 'POST',
+                headers: { Accept: 'application/json; odata=verbose', 'X-RequestDigest': digest },
+                xhrFields: { withCredentials: true }
+              }).fail(() => {})
+            );
+            return Promise.all(addPromises);
+          });
         });
       })
       .then(() => {
