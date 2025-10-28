@@ -1,15 +1,38 @@
 /*=====================================================================
-  SHAREPOINT 2016 ON-PREM DASHBOARD – REACT + JSOM
+  SHAREPOINT 2016 ON-PREM DASHBOARD – REACT + JSOM (FULLY FIXED)
   ----------------------------------------------------
   • Works on SP 2016 On-Prem
   • JSOM for break inheritance + grant Edit
   • React UI fully preserved
   • surveyData column
-  • No login prompt
+  • No page break on typing
+  • Isolated from SharePoint DOM
 =====================================================================*/
 
 // -------------------------------------------------------------------
-// 1. JSOM PERMISSION FUNCTION (SP 2016 SAFE)
+// 1. ISOLATE REACT FROM SHAREPOINT DOM
+// -------------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', () => {
+  // Wait for SP.js to be fully loaded
+  SP.SOD.executeFunc('sp.js', 'SP.ClientContext', () => {
+    const root = document.getElementById('root');
+    if (root) {
+      ReactDOM.render(React.createElement(App), root);
+    } else {
+      console.error('React root not found');
+    }
+  });
+});
+
+// Prevent SharePoint from stealing focus
+document.addEventListener('focusin', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+    e.stopPropagation();
+  }
+});
+
+// -------------------------------------------------------------------
+// 2. JSOM PERMISSION FUNCTION (SP 2016 SAFE)
 // -------------------------------------------------------------------
 function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
   SP.SOD.executeFunc('sp.js', 'SP.ClientContext', function () {
@@ -18,12 +41,11 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
     const list = web.get_lists().getByTitle('Surveys');
     const item = list.getItemById(itemId);
 
-    // Break inheritance, keep existing roles (author)
+    // Break inheritance, keep author
     item.breakRoleInheritance(true, false);
 
     const roleDefs = web.get_roleDefinitions();
     const editRole = roleDefs.getByType(SP.RoleType.contributor); // Edit
-74
     const roleBinding = SP.RoleDefinitionBindingCollection.newObject(context);
     roleBinding.add(editRole);
 
@@ -41,7 +63,7 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
 }
 
 // -------------------------------------------------------------------
-// 2. UTILITIES
+// 3. UTILITIES
 // -------------------------------------------------------------------
 function getDigest() {
   return jQuery.ajax({
@@ -59,19 +81,20 @@ faLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all
 document.head.appendChild(faLink);
 
 // -------------------------------------------------------------------
-// 3. SHAREPOINT UI OVERRIDES
+// 4. SHAREPOINT UI OVERRIDES (HIDE RIBBON, KEEP ALIVE)
 // -------------------------------------------------------------------
 const sharePointStyles = `
-  #s4-ribbonrow, #s4-titlerow { display: none !important; }
-  #s4-workspace { overflow: visible !important; position: static !important; }
-  #contentBox { margin-top: 0 !important; padding-top: 0 !important; }
+  #s4-ribbonrow, #s4-titlerow, #suiteBar, #suiteBarButtons, #s4-ribbonrow .ms-siteactions-root, #siteIcon, #suiteLinksBox { display: none !important; }
+  #s4-workspace { visibility: hidden !important; }
+  #react-app-container { all: initial; display: block; }
+  body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
 `;
 const styleSheet = document.createElement('style');
 styleSheet.textContent = sharePointStyles;
 document.head.appendChild(styleSheet);
 
 // -------------------------------------------------------------------
-// 4. NOTIFICATION
+// 5. NOTIFICATION
 // -------------------------------------------------------------------
 class Notification extends React.Component {
   render() {
@@ -85,7 +108,7 @@ class Notification extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 5. TOP NAV
+// 6. TOP NAV
 // -------------------------------------------------------------------
 class TopNav extends React.Component {
   render() {
@@ -117,7 +140,7 @@ class TopNav extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 6. SIDE NAV
+// 7. SIDE NAV
 // -------------------------------------------------------------------
 class SideNav extends React.Component {
   constructor(props) {
@@ -163,7 +186,7 @@ class SideNav extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 7. SURVEY CARD
+// 8. SURVEY CARD
 // -------------------------------------------------------------------
 class SurveyCard extends React.Component {
   render() {
@@ -240,7 +263,7 @@ class SurveyCard extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 8. QR MODAL
+// 9. QR MODAL
 // -------------------------------------------------------------------
 class QRModal extends React.Component {
   componentDidMount() {
@@ -302,7 +325,7 @@ class QRModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 9. DELETE MODAL
+// 10. DELETE MODAL
 // -------------------------------------------------------------------
 class DeleteModal extends React.Component {
   render() {
@@ -339,7 +362,7 @@ class DeleteModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 10. CREATE FORM MODAL – JSOM PERMISSIONS
+// 11. CREATE FORM MODAL – JSOM PERMISSIONS
 // -------------------------------------------------------------------
 class CreateFormModal extends React.Component {
   constructor(props) {
@@ -435,7 +458,6 @@ class CreateFormModal extends React.Component {
     }).then(resp => {
       const newItemId = resp.d.Id;
 
-      // === JSOM GRANT PERMISSIONS ===
       grantEditPermissionToOwners(
         newItemId,
         _this.state.form.Owners.map(o => o.Id),
@@ -453,7 +475,7 @@ class CreateFormModal extends React.Component {
       );
     }).catch(err => {
       console.error(err);
-      _867_this.props.addNotification('Failed to create form.', 'error');
+      _this.props.addNotification('Failed to create form.', 'error');
       _this.setState({ isSaving: false });
     });
   }
@@ -563,7 +585,7 @@ class CreateFormModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 11. EDIT METADATA MODAL – JSOM PERMISSIONS
+// 12. EDIT METADATA MODAL – JSOM PERMISSIONS
 // -------------------------------------------------------------------
 class EditModal extends React.Component {
   constructor(props) {
@@ -660,7 +682,6 @@ class EditModal extends React.Component {
         xhrFields: { withCredentials: true }
       });
     }).then(() => {
-      // === JSOM GRANT PERMISSIONS ===
       grantEditPermissionToOwners(
         _this.props.survey.Id,
         _this.state.form.Owners.map(o => o.Id),
@@ -811,7 +832,7 @@ class EditModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 12. MAIN APP
+// 13. MAIN APP
 // -------------------------------------------------------------------
 class App extends React.Component {
   constructor(props) {
@@ -968,8 +989,3 @@ class App extends React.Component {
     );
   }
 }
-
-// -------------------------------------------------------------------
-// RENDER
-// -------------------------------------------------------------------
-ReactDOM.render(React.createElement(App), document.getElementById('root'));
