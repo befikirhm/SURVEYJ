@@ -1,14 +1,17 @@
 /*=====================================================================
-  SHAREPOINT 2016 ON-PREM DASHBOARD – REACT + JSOM (100% FIXED)
+  SHAREPOINT 2016 ON-PREM DASHBOARD – REACT + JSOM (FULLY FIXED)
   ----------------------------------------------------
-  • Fixes: _spPageContextInfo undefined
-  • No page break on typing
-  • JSOM permissions
+  • Works on SP 2016 On-Prem
+  • JSOM for permissions
   • surveyData column
+  • NO PAGE BREAK ON TYPING
+  • Debounced inputs
+  • Isolated from SharePoint DOM
+  • Fixed _spPageContextInfo undefined
 =====================================================================*/
 
 // -------------------------------------------------------------------
-// 1. WAIT FOR SHAREPOINT CONTEXT (CRITICAL FIX)
+// 1. WAIT FOR SHAREPOINT CONTEXT (FIX UNDEFINED ERROR)
 // -------------------------------------------------------------------
 function waitForSpContext(callback) {
   if (window._spPageContextInfo && window._spPageContextInfo.webAbsoluteUrl) {
@@ -20,10 +23,10 @@ function waitForSpContext(callback) {
 }
 
 // -------------------------------------------------------------------
-// 2. SAFE URL BUILDER (PREVENT UNDEFINED)
+// 2. SAFE URL BUILDER
 // -------------------------------------------------------------------
 function getSiteUrl() {
-  return window._spPageContextInfo?.webAbsoluteUrl || 
+  return window._spPageContextInfo?.webAbsoluteUrl ||
          (window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/'));
 }
 
@@ -75,7 +78,7 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
     const list = web.get_lists().getByTitle('Surveys');
     const item = list.getItemById(itemId);
 
-    item.breakRoleInheritance(true, false);
+    item.breakRoleInheritance(true, false); // keep author
 
     const roleDefs = web.get_roleDefinitions();
     const editRole = roleDefs.getByType(SP.RoleType.contributor);
@@ -164,7 +167,10 @@ class TopNav extends React.Component {
 // 9. SIDE NAV
 // -------------------------------------------------------------------
 class SideNav extends React.Component {
-  constructor(props) { super(props); this.state = { searchTerm: '', selectedFilter: 'All' }; }
+  constructor(props) {
+    super(props);
+    this.state = { searchTerm: '', selectedFilter: 'All' };
+  }
   render() {
     const _this = this;
     const sidebarClass = `bg-gray-800 text-white w-64 h-screen fixed top-0 left-0 md:static z-900 transform transition-transform duration-300 ease-in-out ${
@@ -276,7 +282,7 @@ class SurveyCard extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 11. QR MODAL (SAFE URL)
+// 11. QR MODAL
 // -------------------------------------------------------------------
 class QRModal extends React.Component {
   componentDidMount() {
@@ -377,42 +383,77 @@ class DeleteModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 13. CREATE FORM MODAL (DEBOUNCED TITLE)
+// 13. CREATE FORM MODAL – DEBOUNCED TITLE INPUT
 // -------------------------------------------------------------------
 class CreateFormModal extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      form: { Title: '', Owners: [{ Id: props.currentUserId, Title: props.currentUserName }], StartDate: '', EndDate: '' },
-      searchTerm: '', searchResults: [], isLoadingUsers: false, isSaving: false, showDropdown: false
+      form: {
+        Title: '',
+        Owners: [{ Id: props.currentUserId, Title: props.currentUserName }],
+        StartDate: '',
+        EndDate: ''
+      },
+      searchTerm: '',
+      searchResults: [],
+      isLoadingUsers: false,
+      isSaving: false,
+      showDropdown: false
     };
+    this.handleUserSelect = this.handleUserSelect.bind(this);
+    this.handleUserRemove = this.handleUserRemove.bind(this);
+    this.handleSave = this.handleSave.bind(this);
   }
 
-  componentDidUpdate(prevState) {
+  componentDidUpdate(prevProps, prevState) {
     const _this = this;
     if (prevState.searchTerm !== this.state.searchTerm && this.state.searchTerm) {
       clearTimeout(this._debounce);
       this._debounce = setTimeout(() => {
         _this.setState({ isLoadingUsers: true });
         jQuery.ajax({
-          url: getSiteUrl() + `/_api/web/siteusers?$filter=substringof('${encodeURIComponent(_this.state.searchTerm)}', Title)&$select=Id,Title&$top=20`,
+          url: `${getSiteUrl()}/_api/web/siteusers?$filter=substringof('${encodeURIComponent(_this.state.searchTerm)}', Title) or substringof('${encodeURIComponent(_this.state.searchTerm)}', LoginName)&$select=Id,Title,LoginName,Email&$top=20`,
           headers: { Accept: 'application/json; odata=verbose' },
           xhrFields: { withCredentials: true }
         }).then(data => {
-          const available = data.d.results.filter(u => !_this.state.form.Owners.some(o => o.Id === u.Id));
-          _this.setState({ searchResults: available.map(u => ({ Id: u.Id, Title: u.Title })), isLoadingUsers: false, showDropdown: true });
-        });
+          const users = data.d.results.map(u => ({ Id: u.Id, Title: u.Title }));
+          const available = users.filter(u => !_this.state.form.Owners.some(o => o.Id === u.Id));
+          _this.setState({ searchResults: available, isLoadingUsers: false, showDropdown: true });
+        }).catch(() => _this.setState({ isLoadingUsers: false, showDropdown: false }));
       }, 300);
     } else if (!this.state.searchTerm) {
       this.setState({ searchResults: [], showDropdown: false });
     }
   }
 
+  handleUserSelect(user) {
+    this.setState({
+      form: { ...this.state.form, Owners: this.state.form.Owners.concat([user]) },
+      searchTerm: '',
+      showDropdown: false
+    });
+  }
+
+  handleUserRemove(id) {
+    if (id === this.props.currentUserId) {
+      this.props.addNotification('You cannot remove yourself.', 'error');
+      return;
+    }
+    this.setState({
+      form: { ...this.state.form, Owners: this.state.form.Owners.filter(o => o.Id !== id) }
+    });
+  }
+
   handleSave() {
     const _this = this;
     if (!this.state.form.Title.trim()) return _this.props.addNotification('Title required.', 'error');
+    if (this.state.form.StartDate && this.state.form.EndDate &&
+        new Date(this.state.form.EndDate) <= new Date(this.state.form.StartDate))
+      return _this.props.addNotification('End Date must be after Start Date.', 'error');
 
     this.setState({ isSaving: true });
+
     getDigest().then(digest => {
       const payload = {
         __metadata: { type: 'SP.Data.SurveysListItem' },
@@ -421,8 +462,11 @@ class CreateFormModal extends React.Component {
         Status: 'Draft',
         surveyData: JSON.stringify({ title: _this.state.form.Title })
       };
+      if (_this.state.form.StartDate) payload.StartDate = new Date(_this.state.form.StartDate).toISOString();
+      if (_this.state.form.EndDate)   payload.EndDate   = new Date(_this.state.form.EndDate).toISOString();
+
       return jQuery.ajax({
-        url: getSiteUrl() + '/_api/web/lists/getbytitle(\'Surveys\')/items',
+        url: `${getSiteUrl()}/_api/web/lists/getbytitle('Surveys')/items`,
         type: 'POST',
         data: JSON.stringify(payload),
         headers: {
@@ -433,29 +477,283 @@ class CreateFormModal extends React.Component {
         xhrFields: { withCredentials: true }
       });
     }).then(resp => {
-      grantEditPermissionToOwners(resp.d.Id, _this.state.form.Owners.map(o => o.Id),
+      const newItemId = resp.d.Id;
+
+      grantEditPermissionToOwners(
+        newItemId,
+        _this.state.form.Owners.map(o => o.Id),
         () => {
-          _this.props.addNotification('Form created!', 'success');
-          window.open(`/builder.aspx?surveyId=${resp.d.Id}`, '_blank');
+          _this.props.addNotification('Form created! All owners have access.', 'success');
+          window.open(`/builder.aspx?surveyId=${newItemId}`, '_blank');
           _this.props.loadSurveys();
           _this.props.onClose();
+          _this.setState({ isSaving: false });
         },
-        () => _this.setState({ isSaving: false })
+        err => {
+          _this.props.addNotification('Permission failed: ' + err, 'error');
+          _this.setState({ isSaving: false });
+        }
       );
-    }).catch(() => _this.setState({ isSaving: false }));
+    }).catch(err => {
+      console.error(err);
+      _this.props.addNotification('Failed to create form.', 'error');
+      _this.setState({ isSaving: false });
+    });
   }
 
   render() {
     const _this = this;
+
+    // DEBOUNCED TITLE INPUT
     const titleInput = (function() {
       let timeout;
       return {
         type: 'text',
         value: _this.state.form.Title,
-        onChange: e => {
+        onChange: function(e) {
           clearTimeout(timeout);
-          const v = e.target.value;
-          timeout = setTimeout(() => _this.setState(prev => ({ form: { ...prev.form, Title: v } })), 50);
+          const value = e.target.value;
+          timeout = setTimeout(() => {
+            _this.setState(prev => ({ form: { ...prev.form, Title: value } }));
+          }, 50);
+        },
+        className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
+        placeholder: 'Enter form title...'
+      };
+    })();
+
+    return React.createElement('div', { className: 'fixed inset-0 flex items-center justify-center z-1200 bg-black/50' },
+      React.createElement('div', { className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl' },
+        React.createElement('div', { className: 'flex justify-between items-center p-4 border-b bg-gray-100' },
+          React.createElement('h2', { className: 'text-lg font-bold text-gray-800' }, 'Create New Form'),
+          React.createElement('button', {
+            type: 'button',
+            className: 'text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full w-8 h-8 flex items-center justify-center',
+            onClick: this.props.onClose
+          }, React.createElement('i', { className: 'fas fa-times' }))
+        ),
+        React.createElement('div', { className: 'p-6 max-h-96 overflow-y-auto' },
+          React.createElement('div', { className: 'space-y-4' },
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Title *'),
+              React.createElement('input', titleInput)
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Owners'),
+              React.createElement('div', { className: 'relative' },
+                React.createElement('input', {
+                  type: 'text',
+                  value: this.state.searchTerm,
+                  onChange: e => _this.setState({ searchTerm: e.target.value }),
+                  placeholder: 'Search users...',
+                  className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
+                }),
+                this.state.isLoadingUsers && React.createElement('div', { className: 'absolute top-2 right-2' },
+                  React.createElement('i', { className: 'fas fa-spinner fa-spin' })
+                ),
+                this.state.showDropdown && this.state.searchResults.length > 0 && React.createElement('ul', {
+                  className: 'absolute z-10 w-full bg-white border rounded mt-1 max-h-48 overflow-y-auto shadow-lg'
+                },
+                  this.state.searchResults.map(u =>
+                    React.createElement('li', {
+                      key: u.Id,
+                      onClick: () => _this.handleUserSelect(u),
+                      className: 'p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0'
+                    }, u.Title)
+                  )
+                )
+              ),
+              React.createElement('div', { className: 'mt-2 flex flex-wrap gap-2' },
+                this.state.form.Owners.map(o =>
+                  React.createElement('div', { key: o.Id, className: 'flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm' },
+                    React.createElement('span', null, o.Title),
+                    o.Id !== _this.props.currentUserId && React.createElement('button', {
+                      type: 'button',
+                      onClick: () => _this.handleUserRemove(o.Id),
+                      className: 'ml-2 text-red-600 hover:text-red-800 font-bold'
+                    }, React.createElement('i', { className: 'fas fa-times' }))
+                  )
+                )
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Start Date'),
+              React.createElement('input', {
+                type: 'date',
+                value: this.state.form.StartDate,
+                onChange: e => _this.setState({ form: { ..._this.state.form, StartDate: e.target.value } }),
+                className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
+              })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'End Date'),
+              React.createElement('input', {
+                type: 'date',
+                value: this.state.form.EndDate,
+                onChange: e => _this.setState({ form: { ..._this.state.form, EndDate: e.target.value } }),
+                className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
+              })
+            )
+          )
+        ),
+        React.createElement('div', { className: 'flex flex-wrap gap-3 justify-end p-4 border-t bg-gray-50' },
+          React.createElement('button', {
+            type: 'button',
+            className: `bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 flex items-center ${this.state.isSaving ? 'opacity-50 cursor-not-allowed' : ''}`,
+            onClick: this.handleSave,
+            disabled: this.state.isSaving
+          },
+            this.state.isSaving
+              ? [React.createElement('i', { className: 'fas fa-spinner fa-spin mr-2', key: 'spin' }), 'Creating...']
+              : [React.createElement('i', { className: 'fas fa-save mr-2', key: 'save' }), 'Create']
+          ),
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 flex items-center',
+            onClick: this.props.onClose,
+            disabled: this.state.isSaving
+          }, React.createElement('i', { className: 'fas fa-times mr-2' }), 'Cancel')
+        )
+      )
+    );
+  }
+}
+
+// -------------------------------------------------------------------
+// 14. EDIT METADATA MODAL – DEBOUNCED TITLE INPUT
+// -------------------------------------------------------------------
+class EditModal extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      form: {
+        Title: props.survey.Title || '',
+        Owners: (props.survey.Owners?.results || []).map(o => ({ Id: o.Id, Title: o.Title })),
+        StartDate: props.survey.StartDate ? new Date(props.survey.StartDate).toISOString().split('T')[0] : '',
+        EndDate:   props.survey.EndDate   ? new Date(props.survey.EndDate).toISOString().split('T')[0]   : '',
+        Status:    props.survey.Status || 'Draft'
+      },
+      searchTerm: '',
+      searchResults: [],
+      isLoadingUsers: false,
+      showDropdown: false,
+      isSaving: false
+    };
+    this.handleUserSelect = this.handleUserSelect.bind(this);
+    this.handleUserRemove = this.handleUserRemove.bind(this);
+    this.handleSave = this.handleSave.bind(this);
+  }
+
+  componentDidUpdate(prevProps, prevState) {
+    const _this = this;
+    if (prevState.searchTerm !== this.state.searchTerm && this.state.searchTerm) {
+      clearTimeout(this._debounce);
+      this._debounce = setTimeout(() => {
+        _this.setState({ isLoadingUsers: true });
+        jQuery.ajax({
+          url: `${getSiteUrl()}/_api/web/siteusers?$filter=substringof('${encodeURIComponent(_this.state.searchTerm)}', Title) or substringof('${encodeURIComponent(_this.state.searchTerm)}', LoginName)&$select=Id,Title,LoginName,Email&$top=20`,
+          headers: { Accept: 'application/json; odata=verbose' },
+          xhrFields: { withCredentials: true }
+        }).then(data => {
+          const users = data.d.results.map(u => ({ Id: u.Id, Title: u.Title }));
+          const available = users.filter(u => !_this.state.form.Owners.some(o => o.Id === u.Id));
+          _this.setState({ searchResults: available, isLoadingUsers: false, showDropdown: true });
+        }).catch(() => _this.setState({ isLoadingUsers: false, showDropdown: false }));
+      }, 300);
+    } else if (!this.state.searchTerm) {
+      this.setState({ searchResults: [], showDropdown: false });
+    }
+  }
+
+  handleUserSelect(user) {
+    this.setState({
+      form: { ...this.state.form, Owners: this.state.form.Owners.concat([user]) },
+      searchTerm: '',
+      showDropdown: false
+    });
+  }
+
+  handleUserRemove(id) {
+    if (id === this.props.currentUserId) {
+      this.props.addNotification('You cannot remove yourself.', 'error');
+      return;
+    }
+    this.setState({
+      form: { ...this.state.form, Owners: this.state.form.Owners.filter(o => o.Id !== id) }
+    });
+  }
+
+  handleSave() {
+    const _this = this;
+    if (!this.state.form.Title.trim()) return _this.props.addNotification('Title required.', 'error');
+    if (this.state.form.StartDate && this.state.form.EndDate &&
+        new Date(this.state.form.EndDate) <= new Date(this.state.form.StartDate))
+      return _this.props.addNotification('End Date must be after Start Date.', 'error');
+
+    const isAuthor = _this.props.survey.AuthorId === _this.props.currentUserId;
+    this.setState({ isSaving: true });
+
+    getDigest().then(digest => {
+      const payload = {
+        __metadata: { type: 'SP.Data.SurveysListItem' },
+        Title: _this.state.form.Title,
+        Status: _this.state.form.Status
+      };
+      if (_this.state.form.StartDate) payload.StartDate = new Date(_this.state.form.StartDate).toISOString();
+      if (_this.state.form.EndDate)   payload.EndDate   = new Date(_this.state.form.EndDate).toISOString();
+      if (isAuthor) payload.OwnersId = { results: _this.state.form.Owners.map(o => o.Id) };
+
+      return jQuery.ajax({
+        url: `${getSiteUrl()}/_api/web/lists/getbytitle('Surveys')/items(${_this.props.survey.Id})`,
+        type: 'POST',
+        data: JSON.stringify(payload),
+        headers: {
+          Accept: 'application/json; odata=verbose',
+          'Content-Type': 'application/json; odata=verbose',
+          'X-HTTP-Method': 'MERGE',
+          'If-Match': '*',
+          'X-RequestDigest': digest
+        },
+        xhrFields: { withCredentials: true }
+      });
+    }).then(() => {
+      grantEditPermissionToOwners(
+        _this.props.survey.Id,
+        _this.state.form.Owners.map(o => o.Id),
+        () => {
+          _this.props.addNotification('Form updated! All owners have access.', 'success');
+          setTimeout(() => _this.props.loadSurveys(), 1000);
+          _this.props.onClose();
+          _this.setState({ isSaving: false });
+        },
+        err => {
+          _this.props.addNotification('Permission failed: ' + err, 'error');
+          _this.setState({ isSaving: false });
+        }
+      );
+    }).catch(err => {
+      console.error(err);
+      _this.props.addNotification('Save failed.', 'error');
+      _this.setState({ isSaving: false });
+    });
+  }
+
+  render() {
+    const _this = this;
+    const isAuthor = this.props.survey.AuthorId === this.props.currentUserId;
+
+    // DEBOUNCED TITLE INPUT
+    const titleInput = (function() {
+      let timeout;
+      return {
+        type: 'text',
+        value: _this.state.form.Title,
+        onChange: function(e) {
+          clearTimeout(timeout);
+          const value = e.target.value;
+          timeout = setTimeout(() => {
+            _this.setState(prev => ({ form: { ...prev.form, Title: value } }));
+          }, 50);
         },
         className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
       };
@@ -464,18 +762,116 @@ class CreateFormModal extends React.Component {
     return React.createElement('div', { className: 'fixed inset-0 flex items-center justify-center z-1200 bg-black/50' },
       React.createElement('div', { className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl' },
         React.createElement('div', { className: 'flex justify-between items-center p-4 border-b bg-gray-100' },
-          React.createElement('h2', { className: 'text-lg font-bold' }, 'Create Form'),
-          React.createElement('button', { onClick: this.props.onClose, className: 'text-gray-600' }, 'x')
-        ),
-        React.createElement('div', { className: 'p-6' },
-          React.createElement('input', titleInput),
-          // ... other inputs (omitted for brevity)
-        ),
-        React.createElement('div', { className: 'p-4 border-t bg-gray-50 flex justify-end gap-2' },
+          React.createElement('h2', { className: 'text-lg font-bold text-gray-800' }, 'Edit Form'),
           React.createElement('button', {
-            onClick: this.handleSave.bind(this),
-            className: 'bg-green-500 text-white px-4 py-2 rounded'
-          }, 'Create')
+            type: 'button',
+            className: 'text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full w-8 h-8 flex items-center justify-center',
+            onClick: this.props.onClose
+          }, React.createElement('i', { className: 'fas fa-times' }))
+        ),
+        React.createElement('div', { className: 'p-6 max-h-96 overflow-y-auto' },
+          React.createElement('div', { className: 'space-y-4' },
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Title *'),
+              React.createElement('input', titleInput)
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Owners'),
+              isAuthor
+                ? React.createElement('div', { className: 'space-y-2' },
+                    React.createElement('div', { className: 'relative' },
+                      React.createElement('input', {
+                        type: 'text',
+                        value: this.state.searchTerm,
+                        onChange: e => _this.setState({ searchTerm: e.target.value }),
+                        placeholder: 'Search users...',
+                        className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
+                      }),
+                      this.state.isLoadingUsers && React.createElement('div', { className: 'absolute top-2 right-2' },
+                        React.createElement('i', { className: 'fas fa-spinner fa-spin' })
+                      ),
+                      this.state.showDropdown && this.state.searchResults.length > 0 && React.createElement('ul', {
+                        className: 'absolute z-10 w-full bg-white border rounded mt-1 max-h-48 overflow-y-auto shadow-lg'
+                      },
+                        this.state.searchResults.map(u =>
+                          React.createElement('li', {
+                            key: u.Id,
+                            onClick: () => _this.handleUserSelect(u),
+                            className: 'p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0'
+                          }, u.Title)
+                        )
+                      )
+                    ),
+                    React.createElement('div', { className: 'flex flex-wrap gap-2 mt-2' },
+                      this.state.form.Owners.map(o =>
+                        React.createElement('div', { key: o.Id, className: 'flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm' },
+                          React.createElement('span', null, o.Title),
+                          o.Id !== _this.props.currentUserId && React.createElement('button', {
+                            type: 'button',
+                            onClick: () => _this.handleUserRemove(o.Id),
+                            className: 'ml-2 text-red-600 hover:text-red-800 font-bold'
+                          }, React.createElement('i', { className: 'fas fa-times' }))
+                        )
+                      )
+                    )
+                  )
+                : React.createElement('div', { className: 'bg-gray-100 p-3 rounded text-sm text-gray-600' },
+                    'Only the form author can modify owners.',
+                    React.createElement('div', { className: 'mt-2 flex flex-wrap gap-1' },
+                      this.state.form.Owners.map(o =>
+                        React.createElement('span', { key: o.Id, className: 'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs' }, o.Title)
+                      )
+                    )
+                  )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Start Date'),
+              React.createElement('input', {
+                type: 'date',
+                value: this.state.form.StartDate,
+                onChange: e => _this.setState({ form: { ..._this.state.form, StartDate: e.target.value } }),
+                className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
+              })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'End Date'),
+              React.createElement('input', {
+                type: 'date',
+                value: this.state.form.EndDate,
+                onChange: e => _this.setState({ form: { ..._this.state.form, EndDate: e.target.value } }),
+                className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
+              })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Status'),
+              React.createElement('select', {
+                value: this.state.form.Status,
+                onChange: e => _this.setState({ form: { ..._this.state.form, Status: e.target.value } }),
+                className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
+              },
+                React.createElement('option', { value: 'Draft' }, 'Draft'),
+                React.createElement('option', { value: 'Published' }, 'Published')
+              )
+            )
+          )
+        ),
+        React.createElement('div', { className: 'flex flex-wrap gap-3 justify-end p-4 border-t bg-gray-50' },
+          React.createElement('button', {
+            type: 'button',
+            className: `bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 flex items-center ${this.state.isSaving ? 'opacity-50 cursor-not-allowed' : ''}`,
+            onClick: this.handleSave,
+            disabled: this.state.isSaving
+          },
+            this.state.isSaving
+              ? [React.createElement('i', { className: 'fas fa-spinner fa-spin mr-2', key: 'spin' }), 'Saving...']
+              : [React.createElement('i', { className: 'fas fa-save mr-2', key: 'save' }), 'Save']
+          ),
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 flex items-center',
+            onClick: this.props.onClose,
+            disabled: this.state.isSaving
+          }, React.createElement('i', { className: 'fas fa-times mr-2' }), 'Cancel')
         )
       )
     );
@@ -483,7 +879,7 @@ class CreateFormModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 14. APP (FIXED componentDidMount)
+// 15. MAIN APP
 // -------------------------------------------------------------------
 class App extends React.Component {
   constructor(props) {
@@ -493,7 +889,15 @@ class App extends React.Component {
       notifications: [], editingSurvey: null, viewingQR: null, deletingSurvey: null,
       creatingForm: false, isSidebarOpen: false
     };
+    this.toggleSidebar = this.toggleSidebar.bind(this);
     this.loadSurveys = this.loadSurveys.bind(this);
+    this.addNotification = this.addNotification.bind(this);
+    this.handleDelete = this.handleDelete.bind(this);
+    this.handleFilter = this.handleFilter.bind(this);
+  }
+
+  toggleSidebar() {
+    this.setState(prev => ({ isSidebarOpen: !prev.isSidebarOpen }));
   }
 
   componentDidMount() {
@@ -513,34 +917,134 @@ class App extends React.Component {
         headers: { Accept: 'application/json; odata=verbose' },
         xhrFields: { withCredentials: true }
       }).done(data => {
-        const surveys = data.d.results.sort((a, b) => new Date(b.Created) - new Date(a.Created));
+        let surveys = data.d.results;
+        surveys.sort((a, b) => new Date(b.Created) - new Date(a.Created));
+
         Promise.all(surveys.map(s =>
           jQuery.ajax({
-            url: getSiteUrl() + `/ _api/web/lists/getbytitle('SurveyResponses')/items?$filter=SurveyID/Id eq ${s.Id}`,
+            url: getSiteUrl() + '/_api/web/lists/getbytitle(\'SurveyResponses\')/items?$filter=SurveyID/Id eq ' + s.Id,
             headers: { Accept: 'application/json; odata=verbose' },
             xhrFields: { withCredentials: true }
-          }).then(r => { s.responseCount = r.d.results.length; return s; })
-            .catch(() => { s.responseCount = 0; return s; })
-        )).then(updated => this.setState({ surveys: updated, filteredSurveys: updated }));
-      });
+          }).then(r => {
+            s.responseCount = r.d.results.length || 0;
+            return s;
+          }).catch(() => { s.responseCount = 0; return s; })
+        )).then(updated => {
+          this.setState({ surveys: updated, filteredSurveys: updated });
+        });
+      }).fail(() => this.addNotification('Failed to load forms.', 'error'));
     });
   }
 
+  addNotification(msg, type = 'success') {
+    const id = Date.now();
+    this.setState(s => ({ notifications: s.notifications.concat([{ id, msg, type }]) }));
+    setTimeout(() => this.setState(s => ({ notifications: s.notifications.filter(n => n.id !== id) })), 5000);
+  }
+
+  handleDelete(id) {
+    this.setState({ deletingSurvey: null });
+    getDigest().then(digest => jQuery.ajax({
+      url: getSiteUrl() + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + id + ')',
+      type: 'POST',
+      headers: { 'X-HTTP-Method': 'DELETE', 'If-Match': '*', 'X-RequestDigest': digest },
+      xhrFields: { withCredentials: true }
+    }).done(() => { this.addNotification('Form deleted!'); this.loadSurveys(); })
+      .fail(() => this.addNotification('Delete failed.', 'error')));
+  }
+
+  handleFilter({ searchTerm, status }) {
+    let filtered = [...this.state.surveys];
+    if (searchTerm) filtered = filtered.filter(s => s.Title.toLowerCase().includes(searchTerm.toLowerCase()));
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (status !== 'All') {
+      filtered = filtered.filter(s => {
+        const start = s.StartDate ? new Date(s.StartDate) : null;
+        const end   = s.EndDate   ? new Date(s.EndDate)   : null;
+        switch (status) {
+          case 'Published': return s.Status === 'Published';
+          case 'Draft':     return s.Status === 'Draft';
+          case 'Upcoming':  return start && start > today;
+          case 'Running':   return start && end && start <= today && end >= today && s.Status === 'Published';
+          default: return true;
+        }
+      });
+    }
+    this.setState({ filteredSurveys: filtered });
+  }
+
   render() {
-    // ... (same as before)
-    return React.createElement('div', { className: 'min-h-screen bg-gray-100' },
-      React.createElement(TopNav, { currentUserName: this.state.currentUserName || 'Loading...' }),
-      // ... rest unchanged
+    const _this = this;
+    const content = React.createElement('div', { className: 'min-h-screen relative z-0' },
+      React.createElement('div', { className: 'flex justify-between items-center mb-4' },
+        React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
+        React.createElement('button', {
+          className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center',
+          onClick: () => _this.setState({ creatingForm: true })
+        }, React.createElement('i', { className: 'fas fa-plus mr-2' }), 'Create New Form')
+      ),
+      React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4' },
+        this.state.filteredSurveys.map(s =>
+          React.createElement(SurveyCard, {
+            key: s.Id,
+            survey: s,
+            currentUserId: _this.state.currentUserId,
+            onEditMetadata: () => _this.setState({ editingSurvey: s }),
+            onViewQR: () => _this.setState({ viewingQR: s }),
+            onDelete: () => _this.setState({ deletingSurvey: s }),
+            addNotification: _this.addNotification.bind(_this)
+          })
+        )
+      )
+    );
+
+    return React.createElement('div', { className: 'min-h-screen bg-gray-100 relative' },
+      React.createElement(TopNav, {
+        currentUserName: this.state.currentUserName,
+        onToggleSidebar: this.toggleSidebar,
+        isSidebarOpen: this.state.isSidebarOpen
+      }),
+      React.createElement('div', { className: 'flex pt-16' },
+        React.createElement(SideNav, { isOpen: this.state.isSidebarOpen, onFilter: this.handleFilter.bind(this) }),
+        React.createElement('main', { className: 'flex-1 p-4 min-h-screen' }, content)
+      ),
+      this.state.notifications.map(n => React.createElement(Notification, { key: n.id, message: n.msg, type: n.type })),
+      this.state.editingSurvey && React.createElement(EditModal, {
+        survey: this.state.editingSurvey,
+        currentUserId: this.state.currentUserId,
+        addNotification: this.addNotification.bind(this),
+        loadSurveys: this.loadSurveys,
+        onClose: () => _this.setState({ editingSurvey: null })
+      }),
+      this.state.viewingQR && React.createElement(QRModal, {
+        survey: this.state.viewingQR,
+        addNotification: this.addNotification.bind(this),
+        onClose: () => _this.setState({ viewingQR: null })
+      }),
+      this.state.deletingSurvey && React.createElement(DeleteModal, {
+        survey: this.state.deletingSurvey,
+        onConfirm: () => _this.handleDelete(_this.state.deletingSurvey.Id),
+        onCancel: () => _this.setState({ deletingSurvey: null })
+      }),
+      this.state.creatingForm && React.createElement(CreateFormModal, {
+        currentUserId: this.state.currentUserId,
+        currentUserName: this.state.currentUserName,
+        addNotification: this.addNotification.bind(this),
+        loadSurveys: this.loadSurveys,
+        onClose: () => _this.setState({ creatingForm: false })
+      })
     );
   }
 }
 
 // -------------------------------------------------------------------
-// RENDER
+// RENDER AFTER SP.JS
 // -------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
   SP.SOD.executeFunc('sp.js', 'SP.ClientContext', () => {
     const root = document.getElementById('root');
-    if (root) ReactDOM.render(React.createElement(App), root);
+    if (root) {
+      ReactDOM.render(React.createElement(App), root);
+    }
   });
 });
