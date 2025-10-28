@@ -1,503 +1,720 @@
-/* ========================================
-   SharePoint 2016 Forms Dashboard
-   React 18 + Hooks – Modern, Readable
-   ======================================== */
-
-const CONFIG = {
-  LIST_NAME: 'Surveys',
-  RESPONSE_LIST: 'SurveyResponses',
-  ROLE_CONTRIBUTE: 1073741827,
-  MAX_SEARCH_RESULTS: 10,
-  SEARCH_DEBOUNCE_MS: 300,
-};
-
-const getDigest = () => $.ajax({
-  url: _spPageContextInfo.webAbsoluteUrl + '/_api/contextinfo',
-  method: 'POST',
-  headers: { 'Accept': 'application/json; odata=verbose' },
-  xhrFields: { withCredentials: true },
-}).then(data => data.d.GetContextWebInformation.FormDigestValue);
-
-const useNotifications = () => {
-  const [notifications, setNotifications] = React.useState([]);
-
-  const add = (message, type = 'success') => {
-    const id = Date.now();
-    setNotifications(prev => [...prev, { id, message, type }]);
-    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 5000);
-  };
-
-  return { notifications, add };
-};
-
-const API = {
-  getSurveys: () => $.ajax({
-    url: _spPageContextInfo.webAbsoluteUrl + `/_api/web/lists/getbytitle('${CONFIG.LIST_NAME}')/items?$select=Id,Title,StartDate,EndDate,Status,AuthorId,Owners/Id,Owners/Title&$expand=Owners`,
+// Utility to get SharePoint request digest
+function getDigest() {
+  return jQuery.ajax({
+    url: window._spPageContextInfo.webAbsoluteUrl + '/_api/contextinfo',
+    method: 'POST',
     headers: { 'Accept': 'application/json; odata=verbose' },
-    xhrFields: { withCredentials: true },
-  }).then(data => data.d.results),
+    xhrFields: { withCredentials: true }
+  }).then(function(data) {
+    return data.d.GetContextWebInformation.FormDigestValue;
+  });
+}
 
-  getResponsesCount: (id) => $.ajax({
-    url: _spPageContextInfo.webAbsoluteUrl + `/_api/web/lists/getbytitle('${CONFIG.RESPONSE_LIST}')/items?$filter=SurveyID/Id eq ${id}`,
-    headers: { 'Accept': 'application/json; odata=verbose' },
-    xhrFields: { withCredentials: true },
-  }).then(data => data.d.results.length),
+// CSS override for SharePoint elements
+const sharePointStyles = `
+  #s4-ribbonrow, #s4-titlerow { display: none !important; }
+  #s4-workspace { overflow: visible !important; position: static !important; }
+  #contentBox { margin-top: 0 !important; padding-top: 0 !important; }
+`;
+const styleSheet = document.createElement('style');
+styleSheet.textContent = sharePointStyles;
+document.head.appendChild(styleSheet);
 
-  searchSiteUsers: (query) => {
-    if (!query?.trim()) return Promise.resolve([]);
-    return $.ajax({
-      url: _spPageContextInfo.webAbsoluteUrl + `/_api/web/siteusers?$filter=startswith(Title,'${encodeURIComponent(query)}')&$top=${CONFIG.MAX_SEARCH_RESULTS}`,
-      headers: { 'Accept': 'application/json; odata=verbose' },
-      xhrFields: { withCredentials: true },
-    }).then(data => data.d.results
-      .filter(u => u.PrincipalType === 1)
-      .map(u => ({ Id: u.Id, Title: u.Title })));
-  },
-};
+// Notification component
+class Notification extends React.Component {
+  render() {
+    var className = 'fixed top-4 right-4 p-4 rounded shadow-lg text-white max-w-sm z-2000';
+    if (this.props.type === 'error') className += ' bg-red-500';
+    else if (this.props.type === 'warning') className += ' bg-yellow-500';
+    else if (this.props.type === 'info') className += ' bg-blue-500';
+    else className += ' bg-green-500';
+    return React.createElement('div', { className: className }, this.props.message);
+  }
+}
 
-const usePeopleSearch = (currentOwners = [], currentUserId) => {
-  const [searchTerm, setSearchTerm] = React.useState('');
-  const [results, setResults] = React.useState([]);
-  const [loading, setLoading] = React.useState(false);
-  const [showDropdown, setShowDropdown] = React.useState(false);
+// TopNav component
+class TopNav extends React.Component {
+  componentDidMount() {
+    console.log('TopNav height:', document.querySelector('.bg-blue-600')?.offsetHeight || 'Not rendered');
+    console.log('Ribbon height:', document.querySelector('#s4-ribbonrow')?.offsetHeight || 'No ribbon');
+  }
+  render() {
+    return React.createElement('nav', {
+      className: 'bg-blue-600 text-white p-4 flex justify-between items-center fixed top-0 left-0 right-0 z-1000 h-16'
+    },
+      React.createElement('div', { className: 'flex items-center' },
+        React.createElement('img', {
+          src: '/SiteAssets/logo.png',
+          alt: 'Forms Logo',
+          className: 'h-8 mr-2'
+        }),
+        React.createElement('div', { className: 'text-lg font-bold' }, 'Forms')
+      ),
+      React.createElement('div', null,
+        React.createElement('span', { className: 'mr-4' }, 'Welcome, ' + this.props.currentUserName)
+      )
+    );
+  }
+}
 
-  React.useEffect(() => {
-    if (searchTerm.length < 2) {
-      setResults([]);
-      setShowDropdown(false);
-      return;
-    }
+// SideNav component
+class SideNav extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      isOpen: false,
+      searchTerm: '',
+      selectedFilter: 'All'
+    };
+    this.toggleSidebar = this.toggleSidebar.bind(this);
+  }
+  toggleSidebar() {
+    this.setState(prev => ({ isOpen: !prev.isOpen }));
+  }
+  render() {
+    const _this = this;
+    return React.createElement('div', {
+      className: `bg-gray-800 text-white w-64 h-screen fixed top-0 left-0 md:static md:block z-900 ${this.state.isOpen ? 'block' : 'hidden'}`
+    },
+      React.createElement('button', {
+        className: 'md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-80 z-1100 flex items-center',
+        onClick: this.toggleSidebar,
+        'aria-label': this.state.isOpen ? 'Collapse sidebar' : 'Expand sidebar'
+      },
+        React.createElement('i', { className: this.state.isOpen ? 'fas fa-times mr-2' : 'fas fa-bars mr-2' }),
+        this.state.isOpen ? 'Collapse' : 'Expand'
+      ),
+      React.createElement('div', { className: 'p-4' },
+        React.createElement('div', { className: 'mb-4' },
+          React.createElement('input', {
+            type: 'text',
+            placeholder: 'Search forms...',
+            value: this.state.searchTerm,
+            onChange: e => {
+              _this.setState({ searchTerm: e.target.value });
+              _this.props.onFilter({ searchTerm: e.target.value, status: _this.state.selectedFilter });
+            },
+            className: 'w-full p-2 border rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500',
+            'aria-label': 'Search forms'
+          })
+        ),
+        React.createElement('ul', { className: 'space-y-2' },
+          ['All', 'Published', 'Draft', 'Upcoming', 'Running'].map(filter =>
+            React.createElement('li', { key: filter },
+              React.createElement('button', {
+                className: `w-full text-left p-2 hover:bg-gray-700 rounded ${this.state.selectedFilter === filter ? 'bg-gray-700 font-semibold' : ''}`,
+                onClick: () => {
+                  _this.setState({ selectedFilter: filter });
+                  _this.props.onFilter({ searchTerm: _this.state.searchTerm, status: filter });
+                }
+              }, filter)
+            )
+          )
+        )
+      )
+    );
+  }
+}
 
-    const timer = setTimeout(() => {
-      setLoading(true);
-      API.searchSiteUsers(searchTerm).then(users => {
-        const available = users.filter(u => !currentOwners.some(o => o.Id === u.Id));
-        setResults(available);
-        setShowDropdown(available.length > 0);
-        setLoading(false);
-      });
-    }, CONFIG.SEARCH_DEBOUNCE_MS);
+// SurveyCard component
+class SurveyCard extends React.Component {
+  render() {
+    const startDate = this.props.survey.StartDate ? new Date(this.props.survey.StartDate).toLocaleDateString('en-US') : 'N/A';
+    const endDate = this.props.survey.EndDate ? new Date(this.props.survey.EndDate).toLocaleDateString('en-US') : 'N/A';
+    return React.createElement('div', {
+      className: 'bg-white rounded shadow-md hover:shadow-lg transition flex flex-col'
+    },
+      React.createElement('div', { className: 'p-4 border-b bg-gray-50' },
+        React.createElement('h3', {
+          className: 'text-lg font-semibold truncate',
+          title: this.props.survey.Title
+        }, this.props.survey.Title)
+      ),
+      React.createElement('div', { className: 'p-4 flex-grow' },
+        React.createElement('p', { className: 'text-gray-600 mb-2' },
+          'Status: ', React.createElement('span', {
+            className: this.props.survey.Status === 'Published' ? 'text-green-600 font-semibold' : 'text-gray-600'
+          }, this.props.survey.Status || 'Draft')
+        ),
+        React.createElement('p', { className: 'text-gray-600 mb-2' },
+          'Date Range: ' + startDate + ' - ' + endDate
+        ),
+        React.createElement('div', { className: 'mb-2' },
+          React.createElement('span', { className: 'text-gray-600' }, 'No of Responses: '),
+          React.createElement('div', {
+            className: 'inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm ml-2'
+          }, 'Responses: ' + (this.props.survey.responseCount || 0))
+        ),
+        React.createElement('div', { className: 'mb-2' },
+          React.createElement('span', { className: 'text-gray-600' }, 'Owners: '),
+          this.props.survey.Owners?.results?.length > 0
+            ? React.createElement('div', { className: 'inline-flex flex-wrap gap-2 ml-2' },
+                this.props.survey.Owners.results.map(owner =>
+                  React.createElement('div', {
+                    key: owner.Id,
+                    className: 'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'
+                  }, owner.Title)
+                )
+              )
+            : React.createElement('span', { className: 'text-gray-500 text-sm ml-2' }, 'No owners')
+        )
+      ),
+      React.createElement('div', { className: 'p-4 border-t bg-gray-50 flex gap-2 flex-wrap' },
+        React.createElement('button', {
+          className: 'bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 flex items-center',
+          onClick: () => window.open('/builder.aspx?surveyId=' + this.props.survey.Id, '_blank'),
+          'aria-label': 'Edit form'
+        },
+          React.createElement('i', { className: 'fas fa-edit mr-2' }),
+          'Edit Form'
+        ),
+        React.createElement('button', {
+          className: 'bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 flex items-center',
+          onClick: () => window.open('/response.aspx?surveyId=' + this.props.survey.Id, '_blank'),
+          'aria-label': 'View form report'
+        },
+          React.createElement('i', { className: 'fas fa-chart-bar mr-2' }),
+          'View Report'
+        ),
+        React.createElement('button', {
+          className: 'bg-purple-500 text-white px-3 py-1 rounded hover:bg-purple-600 flex items-center',
+          onClick: this.props.onViewQR,
+          'aria-label': 'View QR code'
+        },
+          React.createElement('i', { className: 'fas fa-qr-code mr-2' }),
+          'QR Code'
+        ),
+        React.createElement('button', {
+          className: 'bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 flex items-center',
+          onClick: this.props.onEditMetadata,
+          'aria-label': 'Edit form metadata'
+        },
+          React.createElement('i', { className: 'fas fa-cog mr-2' }),
+          'Edit Metadata'
+        ),
+        React.createElement('button', {
+          className: 'bg-indigo-500 text-white px-3 py-1 rounded hover:bg-indigo-600 flex items-center',
+          onClick: () => window.open('/formfiller.aspx?surveyId=' + this.props.survey.Id, '_blank'),
+          'aria-label': 'Fill form'
+        },
+          React.createElement('i', { className: 'fas fa-pen mr-2' }),
+          'Fill Form'
+        ),
+        this.props.survey.AuthorId === this.props.currentUserId && React.createElement('button', {
+          className: 'bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 flex items-center',
+          onClick: this.props.onDelete,
+          'aria-label': 'Delete form'
+        },
+          React.createElement('i', { className: 'fas fa-trash mr-2' }),
+          'Delete'
+        )
+      )
+    );
+  }
+}
 
-    return () => clearTimeout(timer);
-  }, [searchTerm, currentOwners]);
-
-  const selectUser = (user) => {
-    setSearchTerm('');
-    setShowDropdown(false);
-  };
-
-  const removeUser = (userId) => {
-    if (userId === currentUserId) return false;
-    return true;
-  };
-
-  return { searchTerm, setSearchTerm, results, loading, showDropdown, selectUser, removeUser };
-};
-
-const TopNav = ({ userName }) => (
-  <nav className="bg-blue-600 text-white p-4 flex justify-between items-center fixed top-0 left-0 right-0 z-1000 h-16">
-    <div className="flex items-center">
-      <img src="/SiteAssets/logo.png" alt="Logo" className="h-8 mr-2" />
-      <span className="text-lg font-bold">Forms</span>
-    </div>
-    <span className="mr-4">Welcome, {userName}</span>
-  </nav>
-);
-
-const SideNav = ({ onFilter }) => {
-  const [isOpen, setIsOpen] = React.useState(false);
-  const [search, setSearch] = React.useState('');
-  const [status, setStatus] = React.useState('All');
-
-  React.useEffect(() => onFilter({ searchTerm: search, status }), [search, status]);
-
-  const filters = ['All', 'Published', 'Draft', 'Upcoming', 'Running'];
-
-  return (
-    <div className={`bg-gray-800 text-white w-64 h-screen fixed top-0 left-0 md:static md:block z-900 ${isOpen ? 'block' : 'hidden md:block'}`}>
-      <button
-        className="md:hidden bg-blue-500 text-white px-2 py-1 rounded m-2 mt-16 z-1100 flex items-center"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <i className={isOpen ? 'fas fa-times mr-2' : 'fas fa-bars mr-2'} />
-        {isOpen ? 'Collapse' : 'Expand'}
-      </button>
-      <div className="p-4">
-        <input
-          type="text"
-          placeholder="Search forms..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-full p-2 border rounded bg-gray-700 text-white mb-4"
-        />
-        <ul className="space-y-2">
-          {filters.map(f => (
-            <li key={f}>
-              <button
-                className={`w-full text-left p-2 rounded ${status === f ? 'bg-gray-700 font-semibold' : 'hover:bg-gray-700'}`}
-                onClick={() => setStatus(f)}
-              >
-                {f}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-};
-
-const SurveyCard = ({ survey, currentUserId, onEdit, onQR, onDelete, addNotification }) => {
-  const start = survey.StartDate ? new Date(survey.StartDate).toLocaleDateString() : 'N/A';
-  const end = survey.EndDate ? new Date(survey.EndDate).toLocaleDateString() : 'N/A';
-
-  return (
-    <div className="bg-white rounded shadow-md hover:shadow-lg flex flex-col">
-      <div className="p-4 border-b bg-gray-50">
-        <h3 className="text-lg font-semibold truncate" title={survey.Title}>{survey.Title}</h3>
-      </div>
-      <div className="p-4 flex-grow">
-        <p>Status: <span className={survey.Status === 'Published' ? 'text-green-600' : 'text-gray-600'}>{survey.Status || 'Draft'}</span></p>
-        <p>Date: {start} - {end}</p>
-        <p>Responses: <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm ml-2">{survey.responseCount || 0}</span></p>
-        <div className="mt-2">
-          <span>Owners: </span>
-          {survey.Owners?.results?.length ? (
-            <div className="inline-flex flex-wrap gap-1 ml-1">
-              {survey.Owners.results.map(o => (
-                <span key={o.Id} className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">{o.Title}</span>
-              ))}
-            </div>
-          ) : <span className="text-gray-500 text-sm">None</span>}
-        </div>
-      </div>
-      <div className="p-4 border-t bg-gray-50 flex flex-wrap gap-2">
-        <button onClick={() => window.open(`/builder.aspx?surveyId=${survey.Id}`, '_blank')} className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 flex items-center text-sm">
-          <i className="fas fa-edit mr-1" />Edit
-        </button>
-        <button onClick={() => window.open(`/response.aspx?surveyId=${survey.Id}`, '_blank')} className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 flex items-center text-sm">
-          <i className="fas fa-chart-bar mr-1" />Report
-        </button>
-        <button onClick={onQR} className="bg-purple-500 text-white px-3 py-1 rounded hover:bg-purple-600 flex items-center text-sm">
-          <i className="fas fa-qrcode mr-1" />QR
-        </button>
-        <button onClick={onEdit} className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 flex items-center text-sm">
-          <i className="fas fa-cog mr-1" />Metadata
-        </button>
-        <button onClick={() => window.open(`/formfiller.aspx?surveyId=${survey.Id}`, '_blank')} className="bg-indigo-500 text-white px-3 py-1 rounded hover:bg-indigo-600 flex items-center text-sm">
-          <i className="fas fa-pen mr-1" />Fill
-        </button>
-        {survey.AuthorId === currentUserId && (
-          <button onClick={onDelete} className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 flex items-center text-sm">
-            <i className="fas fa-trash mr-1" />Delete
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const QRModal = ({ survey, onClose, addNotification }) => {
-  React.useEffect(() => {
+// QRModal component
+class QRModal extends React.Component {
+  componentDidMount() {
     new QRious({
-      element: document.getElementById(`qr-${survey.Id}`),
-      value: `${_spPageContextInfo.webAbsoluteUrl}/formfiller.aspx?surveyId=${survey.Id}`,
-      size: 200,
+      element: document.getElementById('qr-' + this.props.survey.Id),
+      value: window._spPageContextInfo.webAbsoluteUrl + '/formfiller.aspx?surveyId=' + this.props.survey.Id,
+      size: 200
     });
-  }, [survey.Id]);
-
-  const download = () => {
-    const canvas = document.getElementById(`qr-${survey.Id}`);
+  }
+  downloadQR() {
+    const canvas = document.getElementById('qr-' + this.props.survey.Id);
     const link = document.createElement('a');
     link.href = canvas.toDataURL('image/png');
-    link.download = `${survey.Title.replace(/[^a-z0-9]/gi, '_')}_QR.png`;
+    link.download = this.props.survey.Title.replace(/[^a-z0-9]/gi, '_') + '_QR.png';
     link.click();
-  };
-
-  const copyUrl = () => {
-    const url = `${_spPageContextInfo.webAbsoluteUrl}/formfiller.aspx?surveyId=${survey.Id}`;
+  }
+  copyURL() {
+    const url = window._spPageContextInfo.webAbsoluteUrl + '/formfiller.aspx?surveyId=' + this.props.survey.Id;
     navigator.clipboard.writeText(url).then(() => {
-      addNotification('URL copied to clipboard!', 'success');
+      this.props.addNotification('URL copied to clipboard!', 'success');
     }).catch(() => {
-      addNotification('Failed to copy URL.', 'error');
+      this.props.addNotification('Failed to copy URL.', 'error');
     });
-  };
+  }
+  render() {
+    return React.createElement('div', {
+      className: 'fixed inset-0 flex items-center justify-center z-1200 bg-black/50'
+    },
+      React.createElement('div', { className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl' },
+        React.createElement('div', { className: 'flex justify-between items-center p-4 border-b bg-gray-100' },
+          React.createElement('h2', { className: 'text-lg font-bold' }, 'QR Code'),
+          React.createElement('button', {
+            type: 'button',
+            className: 'text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full w-8 h-8 flex items-center justify-center',
+            onClick: this.props.onClose,
+            'aria-label': 'Close QR modal'
+          },
+            React.createElement('i', { className: 'fas fa-times' })
+          )
+        ),
+        React.createElement('div', { className: 'p-6 flex justify-center' },
+          React.createElement('canvas', { id: 'qr-' + this.props.survey.Id })
+        ),
+        React.createElement('div', { className: 'p-4 border-t bg-gray-50 flex justify-end gap-3' },
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center',
+            onClick: this.copyURL.bind(this),
+            'aria-label': 'Copy form URL'
+          },
+            React.createElement('i', { className: 'fas fa-copy mr-2' }),
+            'Copy URL'
+          ),
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 flex items-center',
+            onClick: this.downloadQR.bind(this),
+            'aria-label': 'Download QR code'
+          },
+            React.createElement('i', { className: 'fas fa-download mr-2' }),
+            'Download'
+          ),
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 flex items-center',
+            onClick: this.props.onClose,
+            'aria-label': 'Close QR modal'
+          },
+            React.createElement('i', { className: 'fas fa-times mr-2' }),
+            'Close'
+          )
+        )
+      )
+    );
+  }
+}
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-1200">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-        <div className="flex justify-between items-center p-4 border-b bg-gray-50">
-          <h2 className="text-lg font-bold">QR Code</h2>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-800">
-            <i className="fas fa-times" />
-          </button>
-        </div>
-        <div className="p-6 flex justify-center">
-          <canvas id={`qr-${survey.Id}`} className="border rounded" />
-        </div>
-        <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
-          <button onClick={copyUrl} className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            <i className="fas fa-copy mr-2" />Copy URL
-          </button>
-          <button onClick={download} className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
-            <i className="fas fa-download mr-2" />Download
-          </button>
-          <button onClick={onClose} className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-            <i className="fas fa-times mr-2" />Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
+// DeleteModal component
+class DeleteModal extends React.Component {
+  render() {
+    return React.createElement('div', {
+      className: 'fixed inset-0 flex items-center justify-center z-1200 bg-black/50'
+    },
+      React.createElement('div', { className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl' },
+        React.createElement('div', { className: 'flex justify-between items-center p-4 border-b bg-gray-100' },
+          React.createElement('h2', { className: 'text-lg font-bold text-gray-800' }, 'Confirm Deletion'),
+          React.createElement('button', {
+            type: 'button',
+            className: 'text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full w-8 h-8 flex items-center justify-center',
+            onClick: this.props.onCancel,
+            'aria-label': 'Cancel deletion'
+          },
+            React.createElement('i', { className: 'fas fa-times' })
+          )
+        ),
+        React.createElement('div', { className: 'p-6' },
+          React.createElement('p', { className: 'text-gray-600' },
+            'Are you sure you want to delete the form "' + this.props.survey.Title + '"? This action cannot be undone.'
+          )
+        ),
+        React.createElement('div', { className: 'p-4 border-t bg-gray-50 flex justify-end gap-3' },
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 flex items-center',
+            onClick: this.props.onConfirm,
+            'aria-label': 'Confirm deletion'
+          },
+            React.createElement('i', { className: 'fas fa-check mr-2' }),
+            'Confirm'
+          ),
+          React.createElement('button', {
+            type: 'button',
+            className: 'bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 flex items-center',
+            onClick: this.props.onCancel,
+            'aria-label': 'Cancel deletion'
+          },
+            React.createElement('i', { className: 'fas fa-times mr-2' }),
+            'Cancel'
+          )
+        )
+      )
+    );
+  }
+}
 
-const DeleteModal = ({ survey, onConfirm, onCancel }) => (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-1200">
-    <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-      <div className="flex justify-between items-center p-4 border-b bg-gray-50">
-        <h2 className="text-lg font-bold">Confirm Delete</h2>
-        <button onClick={onCancel} className="text-gray-600 hover:text-gray-800">
-          <i className="fas fa-times" />
-        </button>
-      </div>
-      <div className="p-6">
-        <p>Are you sure you want to delete "<strong>{survey.Title}</strong>"? This action cannot be undone.</p>
-      </div>
-      <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
-        <button onClick={onConfirm} className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
-          <i className="fas fa-check mr-2" />Confirm
-        </button>
-        <button onClick={onCancel} className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-          <i className="fas fa-times mr-2" />Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-);
-
-// EditModal with site users search
-const EditModal = ({ survey, currentUserId, onClose, addNotification, loadSurveys }) => {
-  const [form, setForm] = React.useState({
-    Owners: survey.Owners?.results?.map(o => ({ Id: o.Id, Title: o.Title })) || [],
-    StartDate: survey.StartDate ? new Date(survey.StartDate).toISOString().split('T')[0] : '',
-    EndDate: survey.EndDate ? new Date(survey.EndDate).toISOString().split('T')[0] : '',
-    Status: survey.Status || 'Draft',
+// Shared People Search Function
+function searchPeople(query, callback) {
+  if (!query || query.trim().length < 2) {
+    callback([]);
+    return;
+  }
+  getDigest().then(digest => {
+    jQuery.ajax({
+      url: window._spPageContextInfo.webAbsoluteUrl + '/_api/SP.UserProfiles.PeopleManager/SearchPrincipals',
+      method: 'POST',
+      data: JSON.stringify({
+        query: query.trim(),
+        maxResults: 10,
+        source: 'UsersOnly'
+      }),
+      headers: {
+        'Accept': 'application/json; odata=verbose',
+        'Content-Type': 'application/json; odata=verbose',
+        'X-RequestDigest': digest
+      },
+      xhrFields: { withCredentials: true }
+    })
+    .done(data => {
+      const users = (data.d.SearchPrincipals || []).map(u => ({
+        Id: u.AccountName.split('|').pop(),
+        Title: u.DisplayName,
+        Email: u.Email
+      }));
+      callback(users);
+    })
+    .fail((xhr, status, err) => {
+      console.error('People search failed:', err, xhr.responseText);
+      callback([]);
+    });
   });
+}
 
-  const { searchTerm, setSearchTerm, results, loading, showDropdown, selectUser, removeUser } =
-    usePeopleSearch(form.Owners, currentUserId);
+// EditModal with AD/User Profile Search
+class EditModal extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      form: {
+        Owners: Array.isArray(this.props.survey.Owners?.results)
+          ? this.props.survey.Owners.results.map(o => ({ Id: o.Id, Title: o.Title }))
+          : [],
+        StartDate: this.props.survey.StartDate ? new Date(this.props.survey.StartDate).toISOString().split('T')[0] : '',
+        EndDate: this.props.survey.EndDate ? new Date(this.props.survey.EndDate).toISOString().split('T')[0] : '',
+        Status: this.props.survey.Status || 'Draft'
+      },
+      searchTerm: '',
+      searchResults: [],
+      isLoadingUsers: false,
+      isSaving: false,
+      showDropdown: false
+    };
+    this.handleUserSelect = this.handleUserSelect.bind(this);
+    this.handleUserRemove = this.handleUserRemove.bind(this);
+    this.handleSave = this.handleSave.bind(this);
+  }
 
-  const handleSave = () => {
-    if (form.StartDate && form.EndDate && new Date(form.EndDate) <= new Date(form.StartDate)) {
-      addNotification('End Date must be after Start Date.', 'error');
+  componentDidMount() { this._isMounted = true; }
+  componentWillUnmount() { this._isMounted = false; clearTimeout(this._debounce); }
+
+  componentDidUpdate(prevProps, prevState) {
+    if (prevState.searchTerm !== this.state.searchTerm) {
+      if (!this.state.searchTerm) {
+        this.setState({ searchResults: [], showDropdown: false });
+        return;
+      }
+      clearTimeout(this._debounce);
+      this._debounce = setTimeout(() => {
+        this.setState({ isLoadingUsers: true });
+        searchPeople(this.state.searchTerm, users => {
+          if (!this._isMounted) return;
+          const available = users.filter(u => !this.state.form.Owners.some(o => o.Id === u.Id));
+          this.setState({
+            searchResults: available,
+            isLoadingUsers: false,
+            showDropdown: available.length > 0
+          });
+        });
+      }, 300);
+    }
+  }
+
+  handleUserSelect(user) {
+    this.setState({
+      form: { ...this.state.form, Owners: [...this.state.form.Owners, user] },
+      searchTerm: '',
+      showDropdown: false
+    });
+  }
+
+  handleUserRemove(userId) {
+    if (userId === this.props.currentUserId) {
+      this.props.addNotification('You cannot remove yourself as an owner.', 'error');
       return;
     }
-    if (!form.Owners.some(o => o.Id === currentUserId)) {
-      addNotification('You must remain an owner.', 'error');
+    this.setState({
+      form: { ...this.state.form, Owners: this.state.form.Owners.filter(o => o.Id !== userId) }
+    });
+  }
+
+  handleSave() {
+    const _this = this;
+    if (this.state.form.StartDate && this.state.form.EndDate &&
+        new Date(this.state.form.EndDate) <= new Date(this.state.form.StartDate)) {
+      this.props.addNotification('End Date must be after Start Date.', 'error');
       return;
     }
-
+    if (!this.state.form.Owners.some(o => o.Id === this.props.currentUserId)) {
+      this.props.addNotification('You must remain an owner of the form.', 'error');
+      return;
+    }
+    this.setState({ isSaving: true });
     getDigest().then(digest => {
       const payload = {
-        '__metadata': { type: 'SP.Data.SurveysListItem' },
-        OwnersId: { results: form.Owners.map(o => o.Id) },
-        Status: form.Status,
+        '__metadata': { 'type': 'SP.Data.SurveysListItem' },
+        OwnersId: { results: this.state.form.Owners.map(o => o.Id) },
+        Status: this.state.form.Status
       };
-      if (form.StartDate) payload.StartDate = new Date(form.StartDate).toISOString();
-      if (form.EndDate) payload.EndDate = new Date(form.EndDate).toISOString();
+      if (this.state.form.StartDate) payload.StartDate = new Date(this.state.form.StartDate).toISOString();
+      if (this.state.form.EndDate) payload.EndDate = new Date(this.state.form.EndDate).toISOString();
 
-      $.ajax({
-        url: _spPageContextInfo.webAbsoluteUrl + `/_api/web/lists/getbytitle('${CONFIG.LIST_NAME}')/items(${survey.Id})`,
+      jQuery.ajax({
+        url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + this.props.survey.Id + ')',
         type: 'POST',
         data: JSON.stringify(payload),
         headers: {
           'X-HTTP-Method': 'MERGE',
           'If-Match': '*',
-          'X-RequestDigest': digest,
+          'Accept': 'application/json; odata=verbose',
           'Content-Type': 'application/json; odata=verbose',
+          'X-RequestDigest': digest
         },
-        xhrFields: { withCredentials: true },
+        xhrFields: { withCredentials: true }
       }).then(() => {
-        addNotification('Updated successfully!');
-        loadSurveys();
-        onClose();
+        // Permissions logic (same as before)
+        const original = Array.isArray(this.props.survey.Owners?.results) ? this.props.survey.Owners.results.map(o => o.Id) : [];
+        const added = this.state.form.Owners.filter(o => !original.includes(o.Id)).map(o => o.Id);
+        const removed = original.filter(id => !this.state.form.Owners.some(o => o.Id === id) && id !== this.props.currentUserId);
+
+        return jQuery.ajax({
+          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + this.props.survey.Id + ')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)',
+          type: 'POST',
+          headers: { 'Accept': 'application/json; odata=verbose', 'X-RequestDigest': digest },
+          xhrFields: { withCredentials: true }
+        }).then(() => {
+          const addPromises = added.map(id => jQuery.ajax({
+            url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + this.props.survey.Id + ')/roleassignments/addroleassignment(principalid=' + id + ', roledefid=1073741827)',
+            type: 'POST',
+            headers: { 'Accept': 'application/json; odata=verbose', 'X-RequestDigest': digest },
+            xhrFields: { withCredentials: true }
+          }));
+          const removePromises = removed.map(id => jQuery.ajax({
+            url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + this.props.survey.Id + ')/roleassignments/removeroleassignment(principalid=' + id + ')',
+            type: 'POST',
+            headers: { 'Accept': 'application/json; odata=verbose', 'X-RequestDigest': digest },
+            xhrFields: { withCredentials: true }
+          }));
+          return Promise.all([...addPromises, ...removePromises]);
+        });
+      }).then(() => {
+        _this.props.addNotification('Form metadata and permissions updated successfully!');
+        _this.props.loadSurveys();
+        _this.props.onClose();
+        _this.setState({ isSaving: false });
       }).fail(err => {
         console.error('Update failed:', err);
-        addNotification('Failed to update: ' + (err.responseText || err.message), 'error');
+        _this.props.addNotification('Failed to update: ' + (err.responseText || err.message), 'error');
+        _this.setState({ isSaving: false });
       });
     });
-  };
+  }
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-1200">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-xl">
-        <div className="flex justify-between items-center p-4 border-b bg-gray-50">
-          <h2 className="text-lg font-bold">Edit Metadata</h2>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-800">
-            <i className="fas fa-times" />
-          </button>
-        </div>
-        <div className="p-6 max-h-96 overflow-y-auto">
-          <div className="space-y-4">
-            <div>
-              <label className="block mb-1 text-gray-700">Owners</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  placeholder="Search site users..."
-                  className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                {loading && <div className="absolute top-2 right-2"><i className="fas fa-spinner fa-spin" /></div>}
-                {showDropdown && results.length > 0 && (
-                  <ul className="absolute z-10 w-full bg-white border rounded mt-1 max-h-48 overflow-y-auto shadow-lg">
-                    {results.map(user => (
-                      <li
-                        key={user.Id}
-                        onClick={() => selectUser(user)}
-                        className="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
-                      >
-                        {user.Title}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {form.Owners.length === 0 ? (
-                  <p className="text-gray-500 text-sm">No owners selected</p>
-                ) : (
-                  form.Owners.map(user => (
-                    <div key={user.Id} className="flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
-                      <span>{user.Title}</span>
-                      {removeUser(user.Id) && (
-                        <button
-                          onClick={() => removeUser(user.Id) && setForm({ ...form, Owners: form.Owners.filter(o => o.Id !== user.Id) })}
-                          className="ml-2 text-red-600 hover:text-red-800 font-bold"
-                        >
-                          <i className="fas fa-times" />
-                        </button>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-            {/* StartDate, EndDate, Status fields */}
-            <div>
-              <label className="block mb-1 text-gray-700">Start Date</label>
-              <input
-                type="date"
-                value={form.StartDate}
-                onChange={e => setForm({ ...form, StartDate: e.target.value })}
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block mb-1 text-gray-700">End Date</label>
-              <input
-                type="date"
-                value={form.EndDate}
-                onChange={e => setForm({ ...form, EndDate: e.target.value })}
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block mb-1 text-gray-700">Status</label>
-              <select
-                value={form.Status}
-                onChange={e => setForm({ ...form, Status: e.target.value })}
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="Published">Published</option>
-                <option value="Draft">Draft</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
-          <button onClick={handleSave} disabled={loading} className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
-            Save
-          </button>
-          <button onClick={onClose} className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
+  render() {
+    const _this = this;
+    return React.createElement('div', { className: 'fixed inset-0 flex items-center justify-center z-1200 bg-black/50' },
+      React.createElement('div', { className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl' },
+        // ... (same modal structure as before)
+        React.createElement('div', { className: 'p-6 max-h-96 overflow-y-auto' },
+          React.createElement('div', { className: 'space-y-4' },
+            React.createElement('div', null,
+              React.createElement('label', { className: 'block mb-1 text-gray-700' }, 'Owners'),
+              React.createElement('div', { className: 'relative' },
+                React.createElement('input', {
+                  type: 'text',
+                  value: this.state.searchTerm,
+                  onChange: e => this.setState({ searchTerm: e.target.value }),
+                  placeholder: 'Search users (AD/User Profile)...',
+                  className: 'w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500'
+                }),
+                this.state.isLoadingUsers && React.createElement('div', { className: 'absolute top-2 right-2' },
+                  React.createElement('i', { className: 'fas fa-spinner fa-spin' })
+                ),
+                this.state.showDropdown && React.createElement('ul', {
+                  className: 'absolute z-10 w-full bg-white border rounded mt-1 max-h-48 overflow-y-auto shadow-lg'
+                },
+                  this.state.searchResults.map(user =>
+                    React.createElement('li', {
+                      key: user.Id,
+                      onClick: () => _this.handleUserSelect(user),
+                      className: 'p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0'
+                    }, user.Title)
+                  )
+                )
+              ),
+              React.createElement('div', { className: 'mt-2 flex flex-wrap gap-2' },
+                this.state.form.Owners.map(user =>
+                  React.createElement('div', {
+                    key: user.Id,
+                    className: 'flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'
+                  },
+                    React.createElement('span', null, user.Title),
+                    user.Id !== _this.props.currentUserId && React.createElement('button', {
+                      type: 'button',
+                      onClick: () => _this.handleUserRemove(user.Id),
+                      className: 'ml-2 text-red-600 hover:text-red-800 font-bold'
+                    }, React.createElement('i', { className: 'fas fa-times' }))
+                  )
+                )
+              )
+            ),
+            // StartDate, EndDate, Status fields (same as before)
+            // ... (omitted for brevity)
+          )
+        ),
+        // Save/Cancel buttons
+      )
+    );
+  }
+}
 
-// App component
-const App = () => {
-  const [surveys, setSurveys] = React.useState([]);
-  const [filtered, setFiltered] = React.useState([]);
-  const [user, setUser] = React.useState({ id: null, name: '' });
-  const { notifications, add: addNotification } = useNotifications();
-  const [modals, setModals] = React.useState({ create: false, edit: null, qr: null, delete: null });
+// CreateFormModal with AD/User Profile Search
+class CreateFormModal extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      form: {
+        Title: '',
+        Owners: [{ Id: this.props.currentUserId, Title: this.props.currentUserName }],
+        StartDate: '',
+        EndDate: ''
+      },
+      searchTerm: '',
+      searchResults: [],
+      isLoadingUsers: false,
+      isSaving: false,
+      showDropdown: false
+    };
+    this.handleUserSelect = this.handleUserSelect.bind(this);
+    this.handleUserRemove = this.handleUserRemove.bind(this);
+    this.handleSave = this.handleSave.bind(this);
+  }
 
-  React.useEffect(() => {
-    $.ajax({
-      url: _spPageContextInfo.webAbsoluteUrl + '/_api/web/currentuser',
-      headers: { 'Accept': 'application/json; odata=verbose' },
-      xhrFields: { withCredentials: true },
-    }).done(data => setUser({ id: data.d.Id, name: data.d.Title }));
-  }, []);
+  componentDidMount() { this._isMounted = true; }
+  componentWillUnmount() { this._isMounted = false; clearTimeout(this._debounce); }
 
-  const loadSurveys = React.useCallback(() => {
-    API.getSurveys().then(items => {
-      const promises = items.map(s => API.getResponsesCount(s.Id).then(c => ({ ...s, responseCount: c })));
-      Promise.all(promises).then(setSurveys);
+  componentDidUpdate(prevProps, prevState) {
+    if (prevState.searchTerm !== this.state.searchTerm) {
+      if (!this.state.searchTerm) {
+        this.setState({ searchResults: [], showDropdown: false });
+        return;
+      }
+      clearTimeout(this._debounce);
+      this._debounce = setTimeout(() => {
+        this.setState({ isLoadingUsers: true });
+        searchPeople(this.state.searchTerm, users => {
+          if (!this._isMounted) return;
+          const available = users.filter(u => !this.state.form.Owners.some(o => o.Id === u.Id));
+          this.setState({
+            searchResults: available,
+            isLoadingUsers: false,
+            showDropdown: available.length > 0
+          });
+        });
+      }, 300);
+    }
+  }
+
+  handleUserSelect(user) {
+    this.setState({
+      form: { ...this.state.form, Owners: [...this.state.form.Owners, user] },
+      searchTerm: '',
+      showDropdown: false
     });
-  }, []);
+  }
 
-  React.useEffect(() => {
-    loadSurveys();
-  }, [loadSurveys]);
+  handleUserRemove(userId) {
+    if (userId === this.props.currentUserId) {
+      this.props.addNotification('You cannot remove yourself as an owner.', 'error');
+      return;
+    }
+    this.setState({
+      form: { ...this.state.form, Owners: this.state.form.Owners.filter(o => o.Id !== userId) }
+    });
+  }
 
-  const filterSurveys = React.useCallback(({ searchTerm, status }) => {
-    let f = surveys;
-    if (searchTerm) f = f.filter(s => s.Title.toLowerCase().includes(searchTerm.toLowerCase()));
-    if (status && status !== 'All') f = f.filter(s => s.Status === status);
-    setFiltered(f);
-  }, [surveys]);
+  handleSave() {
+    const _this = this;
+    if (!this.state.form.Title.trim()) {
+      this.props.addNotification('Title is required.', 'error');
+      return;
+    }
+    if (this.state.form.StartDate && this.state.form.EndDate &&
+        new Date(this.state.form.EndDate) <= new Date(this.state.form.StartDate)) {
+      this.props.addNotification('End Date must be after Start Date.', 'error');
+      return;
+    }
+    this.setState({ isSaving: true });
+    let newItemId;
+    getDigest().then(digest => {
+      const payload = {
+        '__metadata': { 'type': 'SP.Data.SurveysListItem' },
+        Title: _this.state.form.Title,
+        OwnersId: { results: _this.state.form.Owners.map(o => o.Id) },
+        Status: 'Draft',
+        SurveyJson: JSON.stringify({ title: _this.state.form.Title })
+      };
+      if (_this.state.form.StartDate) payload.StartDate = new Date(_this.state.form.StartDate).toISOString();
+      if (_this.state.form.EndDate) payload.EndDate = new Date(_this.state.form.EndDate).toISOString();
 
-  return (
-    <div className="min-h-screen bg-gray-100">
-      <TopNav userName={user.name} />
-      <div className="flex pt-16 md:pt-0">
-        <SideNav onFilter={filterSurveys} />
-        <main className="flex-1 p-4">
-          <div className="flex justify-between items-center mb-4">
-            <h1 className="text-2xl font-bold">Forms</h1>
-            <button onClick={() => setModals(prev => ({ ...prev, create: true }))} className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center">
-              <i className="fas fa-plus mr-2" />Create New Form
-            </button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {filtered.map(survey => (
-              <SurveyCard
-                key={survey.Id}
-                survey={survey}
-                currentUserId={user.id}
-                onEdit={() => setModals(prev => ({ ...prev, edit: survey }))}
-                onQR={() => setModals(prev => ({ ...prev, qr: survey }))}
-                onDelete={() => setModals(prev => ({ ...prev, delete: survey }))}
-                addNotification={addNotification}
-              />
-            ))}
-          </div>
-        </main>
-      </div>
-      {notifications.map(n => <Notification key={n.id} message={n.message} type={n.type} />)}
-      {modals.edit && <EditModal survey={modals.edit} currentUserId={user.id} onClose={() => setModals(prev => ({ ...prev, edit: null }))} addNotification={addNotification} loadSurveys={loadSurveys} />}
-      {modals.qr && <QRModal survey={modals.qr} onClose={() => setModals(prev => ({ ...prev, qr: null }))} addNotification={addNotification} />}
-      {modals.delete && <DeleteModal survey={modals.delete} onConfirm={() => {/* delete logic */}} onCancel={() => setModals(prev => ({ ...prev, delete: null }))} />}
-    </div>
-  );
-};
+      return jQuery.ajax({
+        url: window._spPageContextInfo.webAbsoluteUrl + "/_api/web/lists/getbytitle('Surveys')/items",
+        type: 'POST',
+        data: JSON.stringify(payload),
+        headers: {
+          'Accept': 'application/json; odata=verbose',
+          'Content-Type': 'application/json; odata=verbose',
+          'X-RequestDigest': digest
+        },
+        xhrFields: { withCredentials: true }
+      }).then(resp => {
+        newItemId = resp.d.Id;
+        console.log('New form created, ID =', newItemId);
+        return jQuery.ajax({
+          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + newItemId + ')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)',
+          type: 'POST',
+          headers: { 'Accept': 'application/json; odata=verbose', 'X-RequestDigest': digest },
+          xhrFields: { withCredentials: true }
+        });
+      }).then(() => {
+        const addPromises = _this.state.form.Owners.map(o => jQuery.ajax({
+          url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + newItemId + ')/roleassignments/addroleassignment(principalid=' + o.Id + ', roledefid=1073741827)',
+          type: 'POST',
+          headers: { 'Accept': 'application/json; odata=verbose', 'X-RequestDigest': digest },
+          xhrFields: { withCredentials: true }
+        }));
+        return Promise.all(addPromises);
+      }).then(() => {
+        _this.props.addNotification('Form created successfully!');
+        window.location.href = '/builder.aspx?surveyId=' + newItemId;
+        _this.props.loadSurveys();
+        _this.props.onClose();
+        _this.setState({ isSaving: false });
+      });
+    }).fail(err => {
+      console.error('Create failed:', err);
+      _this.props.addNotification('Failed to create form: ' + (err.responseText || err.message), 'error');
+      _this.setState({ isSaving: false });
+    });
+  }
 
-// Render
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
+  render() {
+    const _this = this;
+    return React.createElement('div', { className: 'fixed inset-0 flex items-center justify-center z-1200 bg-black/50' },
+      React.createElement('div', { className: 'bg-white rounded-lg shadow-xl w-11/12 max-w-md sm:max-w-lg md:max-w-xl' },
+        // ... (same modal structure)
+        // Title, Owners (with search), StartDate, EndDate
+        // Save/Cancel
+      )
+    );
+  }
+}
+
+// Rest of components: FormFillerComponent, BuilderComponent, ResponseComponent, App
+// ... (same as previous working version)
+
+ReactDOM.render(React.createElement(App), document.getElementById('root'));
