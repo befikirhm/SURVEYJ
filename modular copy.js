@@ -5,8 +5,8 @@
   • Non-author owners can edit Title/Dates/Status
   • Only Author edits Owners
   • No break inheritance
+  • Works with item-level permissions
   • All links in new tab
-  • Sorted by Created
 =====================================================================*/
 
 // -------------------------------------------------------------------
@@ -308,7 +308,7 @@ class DeleteModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 9. CREATE FORM MODAL – NO BREAK INHERITANCE
+// 9. CREATE FORM MODAL – FINAL
 // -------------------------------------------------------------------
 class CreateFormModal extends React.Component {
   constructor(props) {
@@ -426,7 +426,7 @@ class CreateFormModal extends React.Component {
         }).then(createResp => {
           const newItemId = createResp.d.Id;
 
-          // GRANT EDIT TO OWNERS (NO BREAK INHERITANCE)
+          // GRANT EDIT TO ALL OWNERS (NO BREAK INHERITANCE)
           const ownerIds = _this.state.form.Owners.map(o => o.Id);
           const addPromises = ownerIds.map(uid =>
             jQuery.ajax({
@@ -434,13 +434,15 @@ class CreateFormModal extends React.Component {
               type: 'POST',
               headers: { Accept: 'application/json; odata=verbose', 'X-RequestDigest': digest },
               xhrFields: { withCredentials: true }
-            }).catch(() => {}) // Ignore if already has Edit
+            }).fail(err => {
+              if (err.status !== 400) console.warn(`Grant failed for ${uid}:`, err);
+            })
           );
           return Promise.all(addPromises).then(() => newItemId);
         });
       })
       .then(finalId => {
-        _this.props.addNotification('Form created!', 'success');
+        _this.props.addNotification('Form created! All owners have access.', 'success');
         window.open(`/builder.aspx?surveyId=${finalId}`, '_blank');
         _this.props.loadSurveys();
         _this.props.onClose();
@@ -662,7 +664,6 @@ class EditModal extends React.Component {
         if (_this.state.form.StartDate) payload.StartDate = new Date(_this.state.form.StartDate).toISOString();
         if (_this.state.form.EndDate)   payload.EndDate   = new Date(_this.state.form.EndDate).toISOString();
 
-        // ONLY AUTHOR UPDATES OWNERS
         if (isAuthor) {
           payload.OwnersId = { results: _this.state.form.Owners.map(o => o.Id) };
         }
@@ -681,9 +682,7 @@ class EditModal extends React.Component {
           xhrFields: { withCredentials: true }
         })
         .then(() => {
-          if (!isAuthor) return;
-
-          // GRANT EDIT TO ALL OWNERS (NO BREAK INHERITANCE)
+          // ALWAYS GRANT EDIT TO ALL OWNERS
           const ownerIds = _this.state.form.Owners.map(o => o.Id);
           const addPromises = ownerIds.map(uid =>
             jQuery.ajax({
@@ -691,20 +690,22 @@ class EditModal extends React.Component {
               type: 'POST',
               headers: { Accept: 'application/json; odata=verbose', 'X-RequestDigest': digest },
               xhrFields: { withCredentials: true }
-            }).catch(() => {})
+            }).fail(err => {
+              if (err.status !== 400) console.warn(`Grant failed for ${uid}:`, err);
+            })
           );
           return Promise.all(addPromises);
         });
       })
       .then(() => {
-        _this.props.addNotification('Form updated successfully!', 'success');
-        setTimeout(() => _this.props.loadSurveys(), 800);
+        _this.props.addNotification('Form updated! All owners have access.', 'success');
+        setTimeout(() => _this.props.loadSurveys(), 1000);
         _this.props.onClose();
         _this.setState({ isSaving: false });
       })
       .catch(err => {
         console.error('Save failed:', err);
-        const msg = err.status === 403 ? 'You do not have permission to update owners.' : (err.responseText || 'Unknown error');
+        const msg = err.status === 403 ? 'No permission to update owners.' : (err.responseText || 'Unknown error');
         _this.props.addNotification(`Save failed: ${msg}`, 'error');
         _this.setState({ isSaving: false });
       });
