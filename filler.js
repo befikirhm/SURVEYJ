@@ -3,7 +3,10 @@
 <script src="https://unpkg.com/survey-core/survey.core.min.js"></script>
 <script src="https://unpkg.com/survey-js-ui/survey-js-ui.min.js"></script>
 
-<div id="app" style="max-width:800px;margin:2rem auto;text-align:center;"></div>
+<!-- Container MUST exist before script -->
+<div id="app" style="max-width:800px;margin:2rem auto;text-align:center;">
+    <p>Loading survey...</p>
+</div>
 
 <script type="text/javascript">
 /* CONFIG */
@@ -14,11 +17,16 @@ const ID = new URLSearchParams(location.search).get('id');
 const STATUS_FIELD = 'Status';
 const JSON_FIELD = 'SurveyJSON';
 
-/* UI */
-const $ = id => document.getElementById(id);
-const set = html => ($('app').innerHTML = html);
+/* Safe DOM access */
+const app = document.getElementById('app');
+if (!app) {
+    console.error('Element #app not found');
+    throw new Error('#app missing in DOM');
+}
+
+const set = html => app.innerHTML = html;
 const loading = () => set('<p>Loading survey...</p>');
-const error = msg => set('<p style="color:red">Error: ' + msg + '</p>');
+const error = msg => set(`<p style="color:red">Error: ${msg}</p>`);
 const draft = () => set('<h3 style="color:#d13438">Draft Mode</h3><p>Survey not available.</p>');
 
 /* GET FORM DIGEST */
@@ -34,6 +42,7 @@ function getDigest(callback) {
             callback(null);
         }
     };
+    xhr.onerror = () => callback(null);
     xhr.send();
 }
 
@@ -60,10 +69,10 @@ function loadSurvey() {
                 const surveyDef = JSON.parse(item[JSON_FIELD]);
                 renderSurvey(surveyDef);
             } catch (e) {
-                error('Invalid JSON');
+                error('Invalid survey JSON');
             }
         } else {
-            error('Load failed');
+            error('Failed to load survey');
         }
     };
     xhr.onerror = () => error('Network error');
@@ -73,6 +82,9 @@ function loadSurvey() {
 /* RENDER SURVEYJS */
 function renderSurvey(def) {
     set('<div id="surveyContainer"></div>');
+    const container = document.getElementById('surveyContainer');
+    if (!container) return error('Render failed');
+
     const survey = new Survey.Model(def);
     Survey.StylesManager.applyTheme("defaultV2");
 
@@ -81,14 +93,14 @@ function renderSurvey(def) {
         saveResponse(sender.data);
     });
 
-    survey.render('surveyContainer');
+    survey.render(container);
 }
 
 /* POST RESPONSE */
 function saveResponse(data) {
     getDigest(function (digest) {
         if (!digest) {
-            console.error('No digest');
+            console.error('No form digest');
             return;
         }
 
@@ -105,12 +117,17 @@ function saveResponse(data) {
         xhr.setRequestHeader('Content-Type', 'application/json;odata=verbose');
         xhr.setRequestHeader('X-RequestDigest', digest);
         xhr.onload = function () {
-            console.log('Saved:', xhr.status);
+            console.log('Response saved:', xhr.status);
         };
+        xhr.onerror = () => console.error('Save failed');
         xhr.send(JSON.stringify(payload));
     });
 }
 
-/* START */
-loadSurvey();
+/* START AFTER DOM READY */
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadSurvey);
+} else {
+    loadSurvey();
+}
 </script>
