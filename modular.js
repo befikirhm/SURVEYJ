@@ -1035,95 +1035,6 @@ class CreateFormModal extends React.Component {
   }
 }
 
-// FormFillerComponent with draft status check
-class FormFillerComponent extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      surveyId: new URLSearchParams(window.location.search).get('surveyId'),
-      status: null,
-      isLoading: true,
-      error: null
-    };
-  }
-  componentDidMount() {
-    var _this = this;
-    console.log('FormFiller top:', document.querySelector('.min-h-screen')?.getBoundingClientRect().top || 'Not rendered');
-    if (this.state.surveyId) {
-      jQuery.ajax({
-        url: window._spPageContextInfo.webAbsoluteUrl + '/_api/web/lists/getbytitle(\'Surveys\')/items(' + this.state.surveyId + ')?$select=Status',
-        headers: { 'Accept': 'application/json; odata=verbose' },
-        xhrFields: { withCredentials: true }
-      }).then(function(data) {
-        _this.setState({
-          status: data.d.Status || 'Draft',
-          isLoading: false
-        });
-      }).fail(function(xhr, status, error) {
-        console.error('Error loading survey status:', error);
-        _this.setState({
-          error: 'Failed to load form status: ' + (xhr.responseText || error),
-          isLoading: false
-        });
-      });
-    } else {
-      this.setState({ error: 'No survey ID provided.', isLoading: false });
-    }
-  }
-  render() {
-    if (this.state.isLoading) {
-      return React.createElement('div', { className: 'p-4 mt-80 md:mt-0 min-h-screen relative z-0' },
-        React.createElement('p', { className: 'text-gray-600' }, 'Loading...')
-      );
-    }
-    if (this.state.error) {
-      return React.createElement('div', { className: 'p-4 mt-80 md:mt-0 min-h-screen relative z-0' },
-        React.createElement('p', { className: 'text-red-600' }, this.state.error)
-      );
-    }
-    if (this.state.status === 'Draft') {
-      return React.createElement('div', { className: 'p-4 mt-80 md:mt-0 min-h-screen relative z-0' },
-        React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Filler'),
-        React.createElement('p', { className: 'text-red-600 mt-4' }, 'This form is in draft and not ready yet.')
-      );
-    }
-    return React.createElement('div', { className: 'p-4 mt-80 md:mt-0 min-h-screen relative z-0' },
-      React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Filler'),
-      React.createElement('p', null, 'Filling form ID: ' + (this.state.surveyId || 'N/A'))
-    );
-  }
-}
-
-// BuilderComponent
-class BuilderComponent extends React.Component {
-  componentDidMount() {
-    console.log('Builder top:', document.querySelector('.min-h-screen')?.getBoundingClientRect().top || 'Not rendered');
-  }
-  render() {
-    const params = new URLSearchParams(window.location.search);
-    const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-80 md:mt-0 min-h-screen relative z-0' },
-      React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Builder'),
-      React.createElement('p', null, surveyId ? 'Editing form ID: ' + surveyId : 'Creating new form')
-    );
-  }
-}
-
-// ResponseComponent
-class ResponseComponent extends React.Component {
-  componentDidMount() {
-    console.log('Response top:', document.querySelector('.min-h-screen')?.getBoundingClientRect().top || 'Not rendered');
-  }
-  render() {
-    const params = new URLSearchParams(window.location.search);
-    const surveyId = params.get('surveyId');
-    return React.createElement('div', { className: 'p-4 mt-80 md:mt-0 min-h-screen relative z-0' },
-      React.createElement('h1', { className: 'text-2xl font-bold' }, 'Form Responses'),
-      React.createElement('p', null, 'Viewing responses for form ID: ' + (surveyId || 'N/A'))
-    );
-  }
-}
-
 // Main App component
 class App extends React.Component {
   constructor(props) {
@@ -1271,41 +1182,32 @@ class App extends React.Component {
   }
   render() {
     var _this = this;
-    var content;
-    if (this.state.currentPage.includes('/formfiller')) {
-      content = React.createElement(FormFillerComponent);
-    } else if (this.state.currentPage.includes('/builder')) {
-      content = React.createElement(BuilderComponent);
-    } else if (this.state.currentPage.includes('/response')) {
-      content = React.createElement(ResponseComponent);
-    } else {
-      content = React.createElement('div', { className: 'p-4 mt-80 md:mt-0 min-h-screen relative z-0' },
-        React.createElement('div', { className: 'flex justify-between items-center mb-4 relative z-50' },
-          React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
-          React.createElement('button', {
-            className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center z-50',
-            onClick: function() { _this.setState({ creatingForm: true }); },
-            'aria-label': 'Create new form'
-          },
-            React.createElement('i', { className: 'fas fa-plus mr-2' }),
-            'Create New Form'
-          )
-        ),
-        React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4' },
-          this.state.filteredSurveys.map(function(survey) {
-            return React.createElement(SurveyCard, {
-              key: survey.Id,
-              survey: survey,
-              currentUserId: _this.state.currentUserId,
-              onEditMetadata: function() { _this.setState({ editingSurvey: survey }); },
-              onViewQR: function() { _this.setState({ viewingQR: survey }); },
-              onDelete: function() { _this.setState({ deletingSurvey: survey }); },
-              addNotification: _this.addNotification.bind(_this)
-            });
-          })
+    var content = React.createElement('div', { className: 'p-4 mt-80 md:mt-0 min-h-screen relative z-0' },
+      React.createElement('div', { className: 'flex justify-between items-center mb-4 relative z-50' },
+        React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
+        React.createElement('button', {
+          className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center z-50',
+          onClick: function() { _this.setState({ creatingForm: true }); },
+          'aria-label': 'Create new form'
+        },
+          React.createElement('i', { className: 'fas fa-plus mr-2' }),
+          'Create New Form'
         )
-      );
-    }
+      ),
+      React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4' },
+        this.state.filteredSurveys.map(function(survey) {
+          return React.createElement(SurveyCard, {
+            key: survey.Id,
+            survey: survey,
+            currentUserId: _this.state.currentUserId,
+            onEditMetadata: function() { _this.setState({ editingSurvey: survey }); },
+            onViewQR: function() { _this.setState({ viewingQR: survey }); },
+            onDelete: function() { _this.setState({ deletingSurvey: survey }); },
+            addNotification: _this.addNotification.bind(_this)
+          });
+        })
+      )
+    );
     return React.createElement('div', { className: 'min-h-screen bg-gray-100 relative' },
       React.createElement(TopNav, { currentUserName: this.state.currentUserName }),
       React.createElement('div', { className: 'flex pt-80 md:pt-0 !important' },
