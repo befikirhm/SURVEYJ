@@ -1,10 +1,11 @@
 /*=====================================================================
-  SHAREPOINT 2016 ON-PREM DASHBOARD – FINAL (OWNER EDIT + SELF-PROTECT)
+  SHAREPOINT 2016 ON-PREM DASHBOARD – FINAL (FULL CONTROL + REMOVE PERMS)
   ----------------------------------------------------
-  • REST-only permissions (NO JSOM)
-  • LIST: Read | ITEM: Read + Edit
-  • ANY OWNER can edit owners list
-  • CANNOT remove themselves
+  • REST-only permissions (NO JSOM, NO SOAP)
+  • ITEM: Full Control (1073741829) | LIST: Read (1073741826)
+  • ANY OWNER can add/remove other owners
+  • CANNOT remove self
+  • REMOVED OWNERS LOSE ACCESS (permissions revoked)
   • "Read all items" REQUIRED in list settings
   • Client-side filtering: Author OR Owner
   • 100% SP 2016 On-Prem tested
@@ -56,66 +57,79 @@ $(document).ready(() => {
 });
 
 // -------------------------------------------------------------------
-// 4. REST-ONLY PERMISSIONS – LIST + ITEM (READ + EDIT)
+// 4. REST-ONLY PERMISSIONS – FULL CONTROL + REMOVE
 // -------------------------------------------------------------------
-function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
-  if (!ownerIds.length) return onSuccess();
+function grantEditPermissionToOwners(itemId, newOwnerIds, oldOwnerIds, onSuccess, onError) {
+  if (!newOwnerIds.length && !oldOwnerIds.length) return onSuccess();
 
   getDigest().then(digest => {
     const listUrl = spUrl(`_api/web/lists/getbytitle('Surveys')`);
     const itemUrl = listUrl + `/items(${itemId})`;
 
-    // 1. Break item inheritance
-    $.ajax({
-      url: itemUrl + '/breakroleinheritance(copyRoleAssignments=false)',
-      method: 'POST',
-      headers: { 'X-RequestDigest': digest },
-      xhrFields: { withCredentials: true }
-    }).then(() => {
-      const promises = [];
+    const promises = [];
 
-      // 2. Grant READ + EDIT on ITEM
-      ownerIds.forEach(id => {
-        promises.push(
-          $.ajax({
-            url: itemUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741826)`,
-            method: 'POST',
-            headers: { 'X-RequestDigest': digest },
-            xhrFields: { withCredentials: true }
-          })
-        );
-        promises.push(
-          $.ajax({
-            url: itemUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741827)`,
-            method: 'POST',
-            headers: { 'X-RequestDigest': digest },
-            xhrFields: { withCredentials: true }
-          })
-        );
-      });
-
-      // 3. Grant READ on LIST
-      ownerIds.forEach(id => {
-        promises.push(
-          $.ajax({
-            url: listUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741826)`,
-            method: 'POST',
-            headers: { 'X-RequestDigest': digest },
-            xhrFields: { withCredentials: true }
-          })
-        );
-      });
-
-      Promise.all(promises)
-        .then(onSuccess)
-        .catch(err => {
-          console.error('Permission grant failed:', err);
-          onError(err);
-        });
-    }).catch(err => {
-      console.error('Break inheritance failed:', err);
-      onError(err);
+    // 1. ADD FULL CONTROL to NEW owners (ITEM)
+    newOwnerIds.forEach(id => {
+      promises.push(
+        $.ajax({
+          url: itemUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741829)`,
+          method: 'POST',
+          headers: { 'X-RequestDigest': digest },
+          xhrFields: { withCredentials: true }
+        })
+      );
     });
+
+    // 2. REMOVE FULL CONTROL from REMOVED owners (ITEM)
+    oldOwnerIds.forEach(id => {
+      promises.push(
+        $.ajax({
+          url: itemUrl + `/roleassignments/removeroleassignment(principalid=${id}, roledefid=1073741829)`,
+          method: 'POST',
+          headers: { 'X-RequestDigest': digest },
+          xhrFields: { withCredentials: true }
+        }).fail(() => {
+          // Fallback: remove from list
+          return $.ajax({
+            url: listUrl + `/roleassignments/removeroleassignment(principalid=${id}, roledefid=1073741826)`,
+            method: 'POST',
+            headers: { 'X-RequestDigest': digest },
+            xhrFields: { withCredentials: true }
+          });
+        })
+      );
+    });
+
+    // 3. ADD READ to NEW owners (LIST)
+    newOwnerIds.forEach(id => {
+      promises.push(
+        $.ajax({
+          url: listUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741826)`,
+          method: 'POST',
+          headers: { 'X-RequestDigest': digest },
+          xhrFields: { withCredentials: true }
+        })
+      );
+    });
+
+    // 4. REMOVE READ from REMOVED owners (LIST)
+    oldOwnerIds.forEach(id => {
+      promises.push(
+        $.ajax({
+          url: listUrl + `/roleassignments/removeroleassignment(principalid=${id}, roledefid=1073741826)`,
+          method: 'POST',
+          headers: { 'X-RequestDigest': digest },
+          xhrFields: { withCredentials: true }
+        })
+      );
+    });
+
+    Promise.all(promises)
+      .then(onSuccess)
+      .catch(err => {
+        console.error('Permission update failed:', err);
+        onError(err);
+      });
   });
 }
 
@@ -458,6 +472,7 @@ class CreateFormModal extends React.Component {
 
     Promise.all(ensurePromises).then(resolved => {
       const allOwners = f.Owners.map(o => resolved.find(r => r.Key === o.Key) || o);
+      const ownerIds = allOwners.map(o => o.Id).filter(id => typeof id === 'number' && id > 0);
 
       getDigest().then(digest => {
         const payload = {
@@ -468,14 +483,7 @@ class CreateFormModal extends React.Component {
         };
         if (f.StartDate) payload.StartDate = new Date(f.StartDate).toISOString();
         if (f.EndDate)   payload.EndDate   = new Date(f.EndDate).toISOString();
-
-        const ownerIds = allOwners
-          .map(o => o.Id)
-          .filter(id => typeof id === 'number' && id > 0);
-
-        if (ownerIds.length > 0) {
-          payload.OwnersId = { results: ownerIds };
-        }
+        if (ownerIds.length > 0) payload.OwnersId = { results: ownerIds };
 
         $.ajax({
           url: spUrl('_api/web/lists/getbytitle(\'Surveys\')/items'),
@@ -489,15 +497,12 @@ class CreateFormModal extends React.Component {
           xhrFields: { withCredentials: true }
         }).then(r => {
           const itemId = r.d.Id;
-          grantEditPermissionToOwners(itemId, ownerIds,
-            () => {
-              this.props.addNotification('Created!', 'success');
-              window.open(`/builder.aspx?surveyId=${itemId}`, '_blank');
-              setTimeout(() => this.props.loadSurveys(), 1500);
-              this.props.onClose();
-            },
-            () => this.setState({ saving: false })
-          );
+          grantEditPermissionToOwners(itemId, ownerIds, [], () => {
+            this.props.addNotification('Created!', 'success');
+            window.open(`/builder.aspx?surveyId=${itemId}`, '_blank');
+            setTimeout(() => this.props.loadSurveys(), 1500);
+            this.props.onClose();
+          }, () => this.setState({ saving: false }));
         }).catch(err => {
           console.error('Create error:', err);
           this.props.addNotification('Create failed', 'error');
@@ -583,7 +588,7 @@ class CreateFormModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 15. EDIT METADATA MODAL – ANY OWNER CAN EDIT, CANNOT REMOVE SELF
+// 15. EDIT METADATA MODAL – FULL CONTROL + REMOVE PERMS
 // -------------------------------------------------------------------
 class EditModal extends React.Component {
   constructor(p) {
@@ -640,15 +645,10 @@ class EditModal extends React.Component {
 
     const currentUserId = this.props.currentUserId;
     const isOwner = (this.props.survey.Owners?.results || []).some(o => o.Id === currentUserId);
+    if (!isOwner) return this.props.addNotification('Only owners can modify owners', 'error');
 
-    if (!isOwner) {
-      return this.props.addNotification('Only owners can modify owners', 'error');
-    }
-
-    // Prevent removing self
     if (!f.Owners.some(o => o.Id === currentUserId)) {
-      this.props.addNotification('You cannot remove yourself from owners', 'error');
-      return;
+      return this.props.addNotification('You cannot remove yourself from owners', 'error');
     }
 
     this.setState({ saving: true });
@@ -659,9 +659,14 @@ class EditModal extends React.Component {
 
     Promise.all(ensurePromises).then(resolved => {
       const allOwners = f.Owners.map(o => resolved.find(r => r.Key === o.Key) || o);
-      const ownerIds = allOwners.map(o => o.Id).filter(id => typeof id === 'number' && id > 0);
+      const newOwnerIds = allOwners.map(o => o.Id).filter(id => typeof id === 'number' && id > 0);
+      const oldOwnerIds = (this.props.survey.Owners?.results || []).map(o => o.Id);
+      const removedOwnerIds = oldOwnerIds.filter(id => !newOwnerIds.includes(id));
 
       getDigest().then(digest => {
+        const listUrl = spUrl(`_api/web/lists/getbytitle('Surveys')`);
+        const itemUrl = listUrl + `/items(${this.props.survey.Id})`;
+
         const payload = {
           __metadata: { type: 'SP.Data.SurveysListItem' },
           Title: f.Title,
@@ -669,10 +674,10 @@ class EditModal extends React.Component {
         };
         if (f.StartDate) payload.StartDate = new Date(f.StartDate).toISOString();
         if (f.EndDate)   payload.EndDate   = new Date(f.EndDate).toISOString();
-        if (ownerIds.length > 0) payload.OwnersId = { results: ownerIds };
+        if (newOwnerIds.length > 0) payload.OwnersId = { results: newOwnerIds };
 
         $.ajax({
-          url: spUrl(`_api/web/lists/getbytitle('Surveys')/items(${this.props.survey.Id})`),
+          url: itemUrl,
           type: 'POST',
           data: JSON.stringify(payload),
           headers: {
@@ -684,14 +689,11 @@ class EditModal extends React.Component {
           },
           xhrFields: { withCredentials: true }
         }).then(() => {
-          grantEditPermissionToOwners(this.props.survey.Id, ownerIds,
-            () => {
-              this.props.addNotification('Updated!', 'success');
-              setTimeout(() => this.props.loadSurveys(), 1500);
-              this.props.onClose();
-            },
-            () => this.setState({ saving: false })
-          );
+          grantEditPermissionToOwners(this.props.survey.Id, newOwnerIds, removedOwnerIds, () => {
+            this.props.addNotification('Updated!', 'success');
+            setTimeout(() => this.props.loadSurveys(), 1500);
+            this.props.onClose();
+          }, () => this.setState({ saving: false }));
         }).catch(err => {
           console.error('Save error:', err);
           this.props.addNotification('Save failed', 'error');
@@ -830,7 +832,6 @@ class App extends React.Component {
       const allSurveys = data.d.results.sort((a, b) => new Date(b.Created) - new Date(a.Created));
       const userId = this.state.userId;
 
-      // Client-side filtering: Author OR Owner
       const visibleSurveys = allSurveys.filter(s =>
         s.AuthorId === userId ||
         (s.Owners?.results || []).some(o => o.Id === userId)
@@ -882,7 +883,7 @@ class App extends React.Component {
     }
     this.setState({ filtered: list });
   }
-  render() {
+   render() {
     const _ = this;
     const cards = this.state.filtered.map(s =>
       React.createElement(SurveyCard, {
