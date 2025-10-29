@@ -1,0 +1,13 @@
+$('<style>').text(`
+  /* === YOUR EXISTING STYLES === */
+
+  /* === TRANSPARENT MODALS === */
+  .fixed.inset-0.bg-black\\/50 {
+    background-color: rgba(0, 0, 0, 0.4) !important;
+  }
+  .bg-white.rounded-lg.shadow-xl {
+    background-color: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+`).appendTo('head');
