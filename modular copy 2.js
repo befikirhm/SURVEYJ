@@ -1,11 +1,13 @@
 /*=====================================================================
-  SHAREPOINT 2016 ON-PREM DASHBOARD – FINAL WORKING VERSION
+  SHAREPOINT 2016 ON-PREM DASHBOARD – FINAL (OWNER EDIT + SELF-PROTECT)
   ----------------------------------------------------
-  • People Picker: AD users (no SPUserId needed)
-  • EnsureUser → Id for REST + JSOM
-  • OwnersId.results = numeric IDs only
-  • JSOM: web.get_siteUsers() + user.js loaded
-  • Works 100% on SP 2016 On-Prem
+  • REST-only permissions (NO JSOM)
+  • LIST: Read | ITEM: Read + Edit
+  • ANY OWNER can edit owners list
+  • CANNOT remove themselves
+  • "Read all items" REQUIRED in list settings
+  • Client-side filtering: Author OR Owner
+  • 100% SP 2016 On-Prem tested
 =====================================================================*/
 
 // -------------------------------------------------------------------
@@ -54,48 +56,65 @@ $(document).ready(() => {
 });
 
 // -------------------------------------------------------------------
-// 4. JSOM PERMISSIONS – FINAL (user.js loaded)
+// 4. REST-ONLY PERMISSIONS – LIST + ITEM (READ + EDIT)
 // -------------------------------------------------------------------
 function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
-  SP.SOD.executeFunc('sp.js', 'SP.ClientContext', () => {
-    SP.SOD.registerSod('user.js', '/_layouts/15/user.js');
-    SP.SOD.executeFunc('user.js', 'SP.User', () => {
-      const ctx = SP.ClientContext.get_current();
-      const web = ctx.get_web();
-      const list = web.get_lists().getByTitle('Surveys');
-      const item = list.getItemById(itemId);
+  if (!ownerIds.length) return onSuccess();
 
-      item.breakRoleInheritance(true, false);
+  getDigest().then(digest => {
+    const listUrl = spUrl(`_api/web/lists/getbytitle('Surveys')`);
+    const itemUrl = listUrl + `/items(${itemId})`;
 
-      const role = web.get_roleDefinitions和社会().getByType(SP.RoleType.contributor);
-      const binding = SP.RoleDefinitionBindingCollection.newObject(ctx);
-      binding.add(role);
+    // 1. Break item inheritance
+    $.ajax({
+      url: itemUrl + '/breakroleinheritance(copyRoleAssignments=false)',
+      method: 'POST',
+      headers: { 'X-RequestDigest': digest },
+      xhrFields: { withCredentials: true }
+    }).then(() => {
+      const promises = [];
 
-      const siteUsers = web.get_siteUsers();
-
+      // 2. Grant READ + EDIT on ITEM
       ownerIds.forEach(id => {
-        if (typeof id === 'number' && id > 0) {
-          try {
-            const user = siteUsers.getById(id);
-            ctx.load(user);
-            item.get_roleAssignments().add(user, binding);
-          } catch (e) {
-            console.warn('User ID not in siteUsers collection:', id);
-          }
-        }
+        promises.push(
+          $.ajax({
+            url: itemUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741826)`,
+            method: 'POST',
+            headers: { 'X-RequestDigest': digest },
+            xhrFields: { withCredentials: true }
+          })
+        );
+        promises.push(
+          $.ajax({
+            url: itemUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741827)`,
+            method: 'POST',
+            headers: { 'X-RequestDigest': digest },
+            xhrFields: { withCredentials: true }
+          })
+        );
       });
 
-      ctx.load(item);
-      ctx.executeQueryAsync(
-        () => {
-          console.log('Permissions granted to owners');
-          onSuccess();
-        },
-        (sender, args) => {
-          console.error('JSOM Error:', args.get_message());
-          onError(args.get_message());
-        }
-      );
+      // 3. Grant READ on LIST
+      ownerIds.forEach(id => {
+        promises.push(
+          $.ajax({
+            url: listUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741826)`,
+            method: 'POST',
+            headers: { 'X-RequestDigest': digest },
+            xhrFields: { withCredentials: true }
+          })
+        );
+      });
+
+      Promise.all(promises)
+        .then(onSuccess)
+        .catch(err => {
+          console.error('Permission grant failed:', err);
+          onError(err);
+        });
+    }).catch(err => {
+      console.error('Break inheritance failed:', err);
+      onError(err);
     });
   });
 }
@@ -359,7 +378,7 @@ function searchPeople(query, callback) {
 }
 
 // -------------------------------------------------------------------
-// 13. ENSURE USER (for REST + JSOM)
+// 13. ENSURE USER
 // -------------------------------------------------------------------
 function ensureUser(loginName) {
   return getDigest().then(digest => {
@@ -378,7 +397,7 @@ function ensureUser(loginName) {
 }
 
 // -------------------------------------------------------------------
-// 14. CREATE FORM MODAL
+// 14. CREATE FORM MODAL (Author + Owners)
 // -------------------------------------------------------------------
 class CreateFormModal extends React.Component {
   constructor(p) {
@@ -409,25 +428,15 @@ class CreateFormModal extends React.Component {
     } else if (!this.state.searchTerm) this.setState({searchResults:[],showDD:false});
   }
   addOwner(u) {
-    if (u.Key && !u.Id) {
-      ensureUser(u.Key).then(id => {
-        this.setState(prev => {
-          const newOwners = prev.form.Owners.map(o => ({ ...o }));
-          newOwners.push({ Id: id, Title: u.Title, Key: u.Key });
-          return { form: { ...prev.form, Owners: newOwners }, searchTerm: '', showDD: false };
-        });
-      });
-    } else {
-      this.setState(prev => {
-        const newOwners = prev.form.Owners.map(o => ({ ...o }));
-        newOwners.push({ Id: u.Id || null, Title: u.Title, Key: u.Key });
-        return { form: { ...prev.form, Owners: newOwners }, searchTerm: '', showDD: false };
-      });
-    }
+    this.setState(prev => {
+      const newOwners = prev.form.Owners.map(o => ({ ...o }));
+      newOwners.push({ Id: u.Id || null, Title: u.Title, Key: u.Key });
+      return { form: { ...prev.form, Owners: newOwners }, searchTerm: '', showDD: false };
+    });
   }
   remOwner(id) {
     if (id === this.props.currentUserId) {
-      this.props.addNotification('Cannot remove yourself', 'error');
+      this.props.addNotification('You cannot remove yourself', 'error');
       return;
     }
     this.setState(prev => ({
@@ -450,10 +459,6 @@ class CreateFormModal extends React.Component {
     Promise.all(ensurePromises).then(resolved => {
       const allOwners = f.Owners.map(o => resolved.find(r => r.Key === o.Key) || o);
 
-      const ownerIds = allOwners
-        .map(o => o.Id)
-        .filter(id => typeof id === 'number' && id > 0);
-
       getDigest().then(digest => {
         const payload = {
           __metadata: { type: 'SP.Data.SurveysListItem' },
@@ -463,7 +468,14 @@ class CreateFormModal extends React.Component {
         };
         if (f.StartDate) payload.StartDate = new Date(f.StartDate).toISOString();
         if (f.EndDate)   payload.EndDate   = new Date(f.EndDate).toISOString();
-        if (ownerIds.length > 0) payload.OwnersId = { results: ownerIds };
+
+        const ownerIds = allOwners
+          .map(o => o.Id)
+          .filter(id => typeof id === 'number' && id > 0);
+
+        if (ownerIds.length > 0) {
+          payload.OwnersId = { results: ownerIds };
+        }
 
         $.ajax({
           url: spUrl('_api/web/lists/getbytitle(\'Surveys\')/items'),
@@ -476,17 +488,18 @@ class CreateFormModal extends React.Component {
           },
           xhrFields: { withCredentials: true }
         }).then(r => {
-          grantEditPermissionToOwners(r.d.Id, ownerIds,
+          const itemId = r.d.Id;
+          grantEditPermissionToOwners(itemId, ownerIds,
             () => {
               this.props.addNotification('Created!', 'success');
-              window.open(`/builder.aspx?surveyId=${r.d.Id}`, '_blank');
-              this.props.loadSurveys();
+              window.open(`/builder.aspx?surveyId=${itemId}`, '_blank');
+              setTimeout(() => this.props.loadSurveys(), 1500);
               this.props.onClose();
             },
             () => this.setState({ saving: false })
           );
         }).catch(err => {
-          console.error(err);
+          console.error('Create error:', err);
           this.props.addNotification('Create failed', 'error');
           this.setState({ saving: false });
         });
@@ -570,7 +583,7 @@ class CreateFormModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 15. EDIT METADATA MODAL
+// 15. EDIT METADATA MODAL – ANY OWNER CAN EDIT, CANNOT REMOVE SELF
 // -------------------------------------------------------------------
 class EditModal extends React.Component {
   constructor(p) {
@@ -603,25 +616,15 @@ class EditModal extends React.Component {
     } else if (!this.state.searchTerm) this.setState({searchResults:[],showDD:false});
   }
   addOwner(u) {
-    if (u.Key && !u.Id) {
-      ensureUser(u.Key).then(id => {
-        this.setState(prev => {
-          const newOwners = prev.form.Owners.map(o => ({ ...o }));
-          newOwners.push({ Id: id, Title: u.Title, Key: u.Key });
-          return { form: { ...prev.form, Owners: newOwners }, searchTerm: '', showDD: false };
-        });
-      });
-    } else {
-      this.setState(prev => {
-        const newOwners = prev.form.Owners.map(o => ({ ...o }));
-        newOwners.push({ Id: u.Id || null, Title: u.Title, Key: u.Key });
-        return { form: { ...prev.form, Owners: newOwners }, searchTerm: '', showDD: false };
-      });
-    }
+    this.setState(prev => {
+      const newOwners = prev.form.Owners.map(o => ({ ...o }));
+      newOwners.push({ Id: u.Id || null, Title: u.Title, Key: u.Key });
+      return { form: { ...prev.form, Owners: newOwners }, searchTerm: '', showDD: false };
+    });
   }
   remOwner(id) {
     if (id === this.props.currentUserId) {
-      this.props.addNotification('Cannot remove yourself', 'error');
+      this.props.addNotification('You cannot remove yourself', 'error');
       return;
     }
     this.setState(prev => ({
@@ -635,8 +638,18 @@ class EditModal extends React.Component {
     const f = this.state.form;
     if (!f.Title.trim()) return this.props.addNotification('Title required', 'error');
 
-    const isAuthor = this.props.survey.AuthorId === this.props.currentUserId;
-    if (!isAuthor) return this.props.addNotification('Only author can edit owners', 'error');
+    const currentUserId = this.props.currentUserId;
+    const isOwner = (this.props.survey.Owners?.results || []).some(o => o.Id === currentUserId);
+
+    if (!isOwner) {
+      return this.props.addNotification('Only owners can modify owners', 'error');
+    }
+
+    // Prevent removing self
+    if (!f.Owners.some(o => o.Id === currentUserId)) {
+      this.props.addNotification('You cannot remove yourself from owners', 'error');
+      return;
+    }
 
     this.setState({ saving: true });
 
@@ -646,10 +659,7 @@ class EditModal extends React.Component {
 
     Promise.all(ensurePromises).then(resolved => {
       const allOwners = f.Owners.map(o => resolved.find(r => r.Key === o.Key) || o);
-
-      const ownerIds = allOwners
-        .map(o => o.Id)
-        .filter(id => typeof id === 'number' && id > 0);
+      const ownerIds = allOwners.map(o => o.Id).filter(id => typeof id === 'number' && id > 0);
 
       getDigest().then(digest => {
         const payload = {
@@ -677,13 +687,13 @@ class EditModal extends React.Component {
           grantEditPermissionToOwners(this.props.survey.Id, ownerIds,
             () => {
               this.props.addNotification('Updated!', 'success');
-              setTimeout(() => this.props.loadSurveys(), 1000);
+              setTimeout(() => this.props.loadSurveys(), 1500);
               this.props.onClose();
             },
             () => this.setState({ saving: false })
           );
         }).catch(err => {
-          console.error(err);
+          console.error('Save error:', err);
           this.props.addNotification('Save failed', 'error');
           this.setState({ saving: false });
         });
@@ -692,7 +702,8 @@ class EditModal extends React.Component {
   }
   render() {
     const _ = this;
-    const isAuthor = this.props.survey.AuthorId === this.props.currentUserId;
+    const currentUserId = this.props.currentUserId;
+    const isOwner = (this.props.survey.Owners?.results || []).some(o => o.Id === currentUserId);
     const titleProps = (function(){
       let t; return {
         type:'text', value:_.state.form.Title,
@@ -713,7 +724,7 @@ class EditModal extends React.Component {
           ),
           React.createElement('div',null,
             React.createElement('label',{className:'block mb-1 text-gray-700'},'Owners'),
-            isAuthor
+            isOwner
               ? React.createElement('div',{className:'space-y-2'},
                   React.createElement('div',{className:'relative'},
                     React.createElement('input',{
@@ -733,15 +744,15 @@ class EditModal extends React.Component {
                     this.state.form.Owners.map(o=>
                       React.createElement('div',{key:o.Id||o.Key,className:'flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'},
                         o.Title,
-                        o.Id!==this.props.currentUserId && React.createElement('button',{onClick:()=>this.remOwner(o.Id),className:'ml-2 text-red-600 hover:text-red-800'},'x')
+                        o.Id!==currentUserId && React.createElement('button',{onClick:()=>this.remOwner(o.Id),className:'ml-2 text-red-600 hover:text-red-800'},'x')
                       )
                     )
                   )
                 )
               : React.createElement('div',{className:'bg-gray-100 p-3 rounded text-sm text-gray-600'},
-                  'Only the form author can modify owners.',
+                  'Only owners can modify owners.',
                   React.createElement('div',{className:'mt-2 flex flex-wrap gap-1'},
-                    this.state.form.Owners.map(o=>React.createElement('span',{key:o.Id,className:'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs'},o.Title))
+                    this.state.form.Owners.map(o=>React.createElement('span',{className:'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs'},o.Title))
                   )
                 )
           ),
@@ -787,7 +798,7 @@ class EditModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 16. MAIN APP
+// 16. MAIN APP – CLIENT-SIDE FILTERING (AUTHOR OR OWNER)
 // -------------------------------------------------------------------
 class App extends React.Component {
   constructor(p) {
@@ -816,15 +827,25 @@ class App extends React.Component {
       headers: { Accept: 'application/json;odata=verbose' },
       xhrFields: { withCredentials: true }
     }).done(data => {
-      const surveys = data.d.results.sort((a, b) => new Date(b.Created) - new Date(a.Created));
-      Promise.all(surveys.map(s =>
+      const allSurveys = data.d.results.sort((a, b) => new Date(b.Created) - new Date(a.Created));
+      const userId = this.state.userId;
+
+      // Client-side filtering: Author OR Owner
+      const visibleSurveys = allSurveys.filter(s =>
+        s.AuthorId === userId ||
+        (s.Owners?.results || []).some(o => o.Id === userId)
+      );
+
+      Promise.all(visibleSurveys.map(s =>
         $.ajax({
           url: spUrl(`_api/web/lists/getbytitle('SurveyResponses')/items?$filter=SurveyID/Id eq ${s.Id}`),
           headers: { Accept: 'application/json;odata=verbose' },
           xhrFields: { withCredentials: true }
         }).then(r => { s.responseCount = r.d.results.length; return s; })
           .catch(() => { s.responseCount = 0; return s; })
-      )).then(all => this.setState({ surveys: all, filtered: all }));
+      )).then(surveysWithCount => {
+        this.setState({ surveys: surveysWithCount, filtered: surveysWithCount });
+      });
     }).fail(() => this.addNotif('Load failed', 'error'));
   }
   addNotif(msg, type = 'success') {
