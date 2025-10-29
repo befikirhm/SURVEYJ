@@ -11,3 +11,18 @@ $('<style>').text(`
     -webkit-backdrop-filter: blur(8px);
   }
 `).appendTo('head');
+
+
+
+
+/* Subtle transparent modal */
+.bg-white {
+  background-color: rgba(249, 250, 251, 0.9) !important;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+/* Softer overlay */
+.fixed.inset-0.bg-black\/50 {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+}
