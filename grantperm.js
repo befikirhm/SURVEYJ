@@ -1,30 +1,41 @@
 // -------------------------------------------------------------------
-// 4. REST-ONLY PERMISSIONS (SP 2016 SAFE)
+// 4. REST-ONLY PERMISSIONS – LIST + ITEM
 // -------------------------------------------------------------------
 function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
   if (!ownerIds.length) return onSuccess();
 
   getDigest().then(digest => {
-    const baseUrl = spUrl(`_api/web/lists/getbytitle('Surveys')/items(${itemId})`);
+    const listUrl = spUrl(`_api/web/lists/getbytitle('Surveys')`);
+    const itemUrl = listUrl + `/items(${itemId})`;
 
-    // 1. Break inheritance (no copy)
+    // 1. Break item inheritance
     $.ajax({
-      url: baseUrl + '/breakroleinheritance(copyRoleAssignments=false)',
+      url: itemUrl + '/breakroleinheritance(copyRoleAssignments=false)',
       method: 'POST',
       headers: { 'X-RequestDigest': digest },
       xhrFields: { withCredentials: true }
     }).then(() => {
-      // 2. Grant Edit to each owner
-      const promises = ownerIds.map(id => {
+      // 2. Grant Edit on ITEM
+      const itemPromises = ownerIds.map(id => {
         return $.ajax({
-          url: baseUrl + '/roleassignments/addroleassignment(principalid=' + id + ', roledefid=1073741826)',
+          url: itemUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741827)`,
           method: 'POST',
           headers: { 'X-RequestDigest': digest },
           xhrFields: { withCredentials: true }
         });
       });
 
-      Promise.all(promises)
+      // 3. Grant Read on LIST (so item appears in view)
+      const listPromises = ownerIds.map(id => {
+        return $.ajax({
+          url: listUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741826)`,
+          method: 'POST',
+          headers: { 'X-RequestDigest': digest },
+          xhrFields: { withCredentials: true }
+        });
+      });
+
+      Promise.all([...itemPromises, ...listPromises])
         .then(onSuccess)
         .catch(err => {
           console.error('Permission grant failed:', err);
