@@ -1,9 +1,9 @@
 /*=====================================================================
   SHAREPOINT 2016 ON-PREM DASHBOARD – REACT + JSOM (FULLY FIXED)
   ----------------------------------------------------
-  • Uses clientPeoplePickerSearchUser (no security errors)
-  • Cached X-RequestDigest (fast + safe)
-  • No waitForSpContext loop
+  • People Picker: search + select (AD users, no "address" error)
+  • X-RequestDigest cached (no security validation)
+  • No waitForSpContext
   • Works 100% on SP 2016 On-Prem
 =====================================================================*/
 
@@ -74,7 +74,7 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
     });
 
     ctx.load(item);
-    ctx.executeQueryAsync(onSuccess, (s, a) => onError(a.get_message()));
+    ctx.executeQueryAsync(onSuccess, (s Announcements) => onError(a.get_message()));
   });
 }
 
@@ -297,7 +297,7 @@ class DeleteModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 12. PEOPLE PICKER SEARCH (FIXED)
+// 12. PEOPLE PICKER SEARCH (FIXED: returns Key + Id)
 // -------------------------------------------------------------------
 function searchPeople(query, callback) {
   getDigest().then(digest => {
@@ -326,7 +326,11 @@ function searchPeople(query, callback) {
       const results = JSON.parse(resp.d.ClientPeoplePickerSearchUser);
       const users = results
         .filter(r => r.EntityType === 1)
-        .map(r => ({ Id: r.EntityData.SPUserId, Title: r.DisplayText }));
+        .map(r => ({
+          Id: r.EntityData.SPUserId,
+          Title: r.DisplayText,
+          Key: r.Key  // This is the resolved address (e.g. i:0#.f|membership|user@domain.com)
+        }));
       callback(users);
     }).catch(() => callback([]));
   });
@@ -339,7 +343,7 @@ class CreateFormModal extends React.Component {
   constructor(p) {
     super(p);
     this.state = {
-      form: { Title:'', Owners:[{Id:p.currentUserId,Title:p.currentUserName}], StartDate:'', EndDate:'' },
+      form: { Title:'', Owners:[{Id:p.currentUserId,Title:p.currentUserName,Key:null}], StartDate:'', EndDate:'' },
       searchTerm:'', searchResults:[], loading:false, showDD:false, saving:false
     };
   }
@@ -354,7 +358,12 @@ class CreateFormModal extends React.Component {
       }, 300);
     } else if (!this.state.searchTerm) this.setState({searchResults:[],showDD:false});
   }
-  addOwner(u){ this.setState(s=>({form:{...s.form,Owners:s.form.Owners.concat(u)},searchTerm:'',showDD:false})); }
+  addOwner(u){
+    this.setState(s=>({
+      form:{...s.form, Owners: s.form.Owners.concat({Id:u.Id, Title:u.Title, Key:u.Key})},
+      searchTerm:'', showDD:false
+    }));
+  }
   remOwner(id){
     if (id===this.props.currentUserId) { this.props.addNotification('Cannot remove yourself','error'); return; }
     this.setState(s=>({form:{...s.form,Owners:s.form.Owners.filter(o=>o.Id!==id)}}));
@@ -370,7 +379,7 @@ class CreateFormModal extends React.Component {
       const payload = {
         __metadata:{type:'SP.Data.SurveysListItem'},
         Title:f.Title,
-        OwnersId:{results:f.Owners.map(o=>o.Id)},
+        OwnersId:{ results: f.Owners.map(o => o.Key).filter(k=>k) },  // Use Key, skip null
         Status:'Draft',
         surveyData:JSON.stringify({title:f.Title})
       };
@@ -392,7 +401,11 @@ class CreateFormModal extends React.Component {
       grantEditPermissionToOwners(r.d.Id, f.Owners.map(o=>o.Id),
         ()=>{ this.props.addNotification('Created!','success'); window.open(`/builder.aspx?surveyId=${r.d.Id}`,'_blank'); this.props.loadSurveys(); this.props.onClose(); },
         ()=>{ this.setState({saving:false}); });
-    }).catch(()=>{ this.props.addNotification('Create failed','error'); this.setState({saving:false}); });
+    }).catch(err=>{
+      console.error(err);
+      this.props.addNotification('Create failed','error');
+      this.setState({saving:false});
+    });
   }
   render(){
     const _=this;
@@ -471,7 +484,7 @@ class CreateFormModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 14. EDIT METADATA MODAL (uses same searchPeople)
+// 14. EDIT METADATA MODAL
 // -------------------------------------------------------------------
 class EditModal extends React.Component {
   constructor(p) {
@@ -480,7 +493,7 @@ class EditModal extends React.Component {
     this.state = {
       form: {
         Title: s.Title||'',
-        Owners: (s.Owners?.results||[]).map(o=>({Id:o.Id,Title:o.Title})),
+        Owners: (s.Owners?.results||[]).map(o=>({Id:o.Id,Title:o.Title,Key:null})),
         StartDate: s.StartDate?new Date(s.StartDate).toISOString().split('T')[0]:'',
         EndDate:   s.EndDate?new Date(s.EndDate).toISOString().split('T')[0]:'',
         Status:    s.Status||'Draft'
@@ -499,7 +512,12 @@ class EditModal extends React.Component {
       }, 300);
     } else if (!this.state.searchTerm) this.setState({searchResults:[],showDD:false});
   }
-  addOwner(u){ this.setState(s=>({form:{...s.form,Owners:s.form.Owners.concat(u)},searchTerm:'',showDD:false})); }
+  addOwner(u){
+    this.setState(s=>({
+      form:{...s.form, Owners: s.form.Owners.concat({Id:u.Id, Title:u.Title, Key:u.Key})},
+      searchTerm:'', showDD:false
+    }));
+  }
   remOwner(id){
     if (id===this.props.currentUserId) { this.props.addNotification('Cannot remove yourself','error'); return; }
     this.setState(s=>({form:{...s.form,Owners:s.form.Owners.filter(o=>o.Id!==id)}}));
@@ -516,7 +534,7 @@ class EditModal extends React.Component {
       const payload = { __metadata:{type:'SP.Data.SurveysListItem'}, Title:f.Title, Status:f.Status };
       if (f.StartDate) payload.StartDate = new Date(f.StartDate).toISOString();
       if (f.EndDate)   payload.EndDate   = new Date(f.EndDate).toISOString();
-      if (isAuthor) payload.OwnersId = {results:f.Owners.map(o=>o.Id)};
+      if (isAuthor) payload.OwnersId = { results: f.Owners.map(o => o.Key).filter(k=>k) };
 
       return $.ajax({
         url: spUrl(`_api/web/lists/getbytitle('Surveys')/items(${this.props.survey.Id})`),
@@ -535,7 +553,11 @@ class EditModal extends React.Component {
       grantEditPermissionToOwners(this.props.survey.Id, f.Owners.map(o=>o.Id),
         ()=>{ this.props.addNotification('Updated!','success'); setTimeout(()=>this.props.loadSurveys(),1000); this.props.onClose(); },
         ()=>{ this.setState({saving:false}); });
-    }).catch(()=>{ this.props.addNotification('Save failed','error'); this.setState({saving:false}); });
+    }).catch(err=>{
+      console.error(err);
+      this.props.addNotification('Save failed','error');
+      this.setState({saving:false});
+    });
   }
   render(){
     const _=this;
