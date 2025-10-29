@@ -4,7 +4,6 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
   getDigest().then(digest => {
     const listUrl = spUrl(`_api/web/lists/getbytitle('Surveys')`);
     const itemUrl = listUrl + `/items(${itemId})`;
-    const LIST_GUID = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'; // REPLACE
 
     // 1. Break inheritance
     $.ajax({
@@ -13,53 +12,32 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
       headers: { 'X-RequestDigest': digest },
       xhrFields: { withCredentials: true }
     }).then(() => {
-      // 2. SOAP: Assign FULL CONTROL (decimal mask)
-      const soapPromises = ownerIds.map(principalId => {
-        const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
-          <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                         xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-                         xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-            <soap:Body>
-              <AddPermission xmlns="http://schemas.microsoft.com/sharepoint/soap/directory/">
-                <objectId>${itemId}</objectId>
-                <objectType>ListItem</objectType>
-                <permissionMask>9223372036854775807</permissionMask>
-                <principalId>${principalId}</principalId>
-                <principalType>User</principalType>
-                <listId>${LIST_GUID}</listId>
-              </AddPermission>
-            </soap:Body>
-          </soap:Envelope>`;
+      const promises = [];
 
-        return $.ajax({
-          url: spUrl('_vti_bin/Permissions.asmx'),
-          type: 'POST',
-          data: soapEnvelope,
-          contentType: 'text/xml; charset=utf-8',
-          dataType: 'xml',
-          headers: {
-            'SOAPAction': 'http://schemas.microsoft.com/sharepoint/soap/directory/AddPermission'
-          },
+      // 2. Grant FULL CONTROL on ITEM
+      ownerIds.forEach(id => {
+        promises.push($.ajax({
+          url: itemUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741829)`,
+          method: 'POST',
+          headers: { 'X-RequestDigest': digest },
           xhrFields: { withCredentials: true }
-        });
+        }));
       });
 
-      Promise.all(soapPromises)
-        .then(() => {
-          // Optional: List Read
-          const listPromises = ownerIds.map(id =>
-            $.ajax({
-              url: listUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741826)`,
-              method: 'POST',
-              headers: { 'X-RequestDigest': digest },
-              xhrFields: { withCredentials: true }
-            })
-          );
-          return Promise.all(listPromises);
-        })
+      // 3. Grant READ on LIST
+      ownerIds.forEach(id => {
+        promises.push($.ajax({
+          url: listUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741826)`,
+          method: 'POST',
+          headers: { 'X-RequestDigest': digest },
+          xhrFields: { withCredentials: true }
+        }));
+      });
+
+      Promise.all(promises)
         .then(onSuccess)
         .catch(err => {
-          console.error('SOAP Error:', err);
+          console.error('Permission grant failed:', err);
           onError(err);
         });
     }).catch(onError);
