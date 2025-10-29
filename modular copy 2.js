@@ -1,9 +1,9 @@
 /*=====================================================================
   SHAREPOINT 2016 ON-PREM DASHBOARD – REACT + JSOM (FULLY FIXED)
   ----------------------------------------------------
-  • People Picker: search + select (AD users, no "address" error)
-  • X-RequestDigest cached (no security validation)
-  • No waitForSpContext
+  • People Picker: search + select (AD users, no errors)
+  • Immutable state → NO React #185
+  • X-RequestDigest cached
   • Works 100% on SP 2016 On-Prem
 =====================================================================*/
 
@@ -74,7 +74,7 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
     });
 
     ctx.load(item);
-    ctx.executeQueryAsync(onSuccess, (s Announcements) => onError(a.get_message()));
+    ctx.executeQueryAsync(onSuccess, (s, a) => onError(a.get_message()));
   });
 }
 
@@ -297,7 +297,7 @@ class DeleteModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 12. PEOPLE PICKER SEARCH (FIXED: returns Key + Id)
+// 12. PEOPLE PICKER SEARCH (returns Key + Id)
 // -------------------------------------------------------------------
 function searchPeople(query, callback) {
   getDigest().then(digest => {
@@ -329,7 +329,7 @@ function searchPeople(query, callback) {
         .map(r => ({
           Id: r.EntityData.SPUserId,
           Title: r.DisplayText,
-          Key: r.Key  // This is the resolved address (e.g. i:0#.f|membership|user@domain.com)
+          Key: r.Key
         }));
       callback(users);
     }).catch(() => callback([]));
@@ -343,8 +343,17 @@ class CreateFormModal extends React.Component {
   constructor(p) {
     super(p);
     this.state = {
-      form: { Title:'', Owners:[{Id:p.currentUserId,Title:p.currentUserName,Key:null}], StartDate:'', EndDate:'' },
-      searchTerm:'', searchResults:[], loading:false, showDD:false, saving:false
+      form: {
+        Title: '',
+        Owners: [{ Id: p.currentUserId, Title: p.currentUserName, Key: null }],
+        StartDate: '',
+        EndDate: ''
+      },
+      searchTerm: '',
+      searchResults: [],
+      loading: false,
+      showDD: false,
+      saving: false
     };
   }
   componentDidUpdate(prev) {
@@ -358,57 +367,72 @@ class CreateFormModal extends React.Component {
       }, 300);
     } else if (!this.state.searchTerm) this.setState({searchResults:[],showDD:false});
   }
-  addOwner(u){
-    this.setState(s=>({
-      form:{...s.form, Owners: s.form.Owners.concat({Id:u.Id, Title:u.Title, Key:u.Key})},
-      searchTerm:'', showDD:false
+  addOwner(u) {
+    this.setState(prev => {
+      const newOwners = prev.form.Owners.map(o => ({ ...o }));
+      newOwners.push({ Id: u.Id, Title: u.Title, Key: u.Key });
+      return {
+        form: { ...prev.form, Owners: newOwners },
+        searchTerm: '',
+        showDD: false
+      };
+    });
+  }
+  remOwner(id) {
+    if (id === this.props.currentUserId) {
+      this.props.addNotification('Cannot remove yourself', 'error');
+      return;
+    }
+    this.setState(prev => ({
+      form: {
+        ...prev.form,
+        Owners: prev.form.Owners
+          .map(o => ({ ...o }))
+          .filter(o => o.Id !== id)
+      }
     }));
   }
-  remOwner(id){
-    if (id===this.props.currentUserId) { this.props.addNotification('Cannot remove yourself','error'); return; }
-    this.setState(s=>({form:{...s.form,Owners:s.form.Owners.filter(o=>o.Id!==id)}}));
-  }
-  save(){
-    const f=this.state.form;
-    if (!f.Title.trim()) return this.props.addNotification('Title required','error');
-    if (f.StartDate && f.EndDate && new Date(f.EndDate)<=new Date(f.StartDate))
-      return this.props.addNotification('End date must be after start','error');
+  save() {
+    const f = this.state.form;
+    if (!f.Title.trim()) return this.props.addNotification('Title required', 'error');
+    if (f.StartDate && f.EndDate && new Date(f.EndDate) <= new Date(f.StartDate))
+      return this.props.addNotification('End date must be after start', 'error');
 
-    this.setState({saving:true});
-    getDigest().then(digest=>{
+    this.setState({saving: true});
+    getDigest().then(digest => {
       const payload = {
-        __metadata:{type:'SP.Data.SurveysListItem'},
-        Title:f.Title,
-        OwnersId:{ results: f.Owners.map(o => o.Key).filter(k=>k) },  // Use Key, skip null
-        Status:'Draft',
-        surveyData:JSON.stringify({title:f.Title})
+        __metadata: { type: 'SP.Data.SurveysListItem' },
+        Title: f.Title,
+        OwnersId: { results: f.Owners.map(o => o.Key).filter(k => k !== null) },
+        Status: 'Draft',
+        surveyData: JSON.stringify({ title: f.Title })
       };
       if (f.StartDate) payload.StartDate = new Date(f.StartDate).toISOString();
       if (f.EndDate)   payload.EndDate   = new Date(f.EndDate).toISOString();
 
       return $.ajax({
         url: spUrl('_api/web/lists/getbytitle(\'Surveys\')/items'),
-        type:'POST',
-        data:JSON.stringify(payload),
-        headers:{
-          Accept:'application/json;odata=verbose',
-          'Content-Type':'application/json;odata=verbose',
-          'X-RequestDigest':digest
+        type: 'POST',
+        data: JSON.stringify(payload),
+        headers: {
+          Accept: 'application/json;odata=verbose',
+          'Content-Type': 'application/json;odata=verbose',
+          'X-RequestDigest': digest
         },
-        xhrFields:{withCredentials:true}
+        xhrFields: { withCredentials: true }
       });
-    }).then(r=>{
-      grantEditPermissionToOwners(r.d.Id, f.Owners.map(o=>o.Id),
-        ()=>{ this.props.addNotification('Created!','success'); window.open(`/builder.aspx?surveyId=${r.d.Id}`,'_blank'); this.props.loadSurveys(); this.props.onClose(); },
-        ()=>{ this.setState({saving:false}); });
-    }).catch(err=>{
+    }).then(r => {
+      grantEditPermissionToOwners(r.d.Id, f.Owners.map(o => o.Id),
+        () => { this.props.addNotification('Created!', 'success'); window.open(`/builder.aspx?surveyId=${r.d.Id}`, '_blank'); this.props.loadSurveys(); this.props.onClose(); },
+        () => { this.setState({saving: false}); });
+    }).catch(err => {
       console.error(err);
-      this.props.addNotification('Create failed','error');
-      this.setState({saving:false});
+      this.props.addNotification('Create failed', 'error');
+      this.setState({saving: false});
     });
   }
-  render(){
-    const _=this;
+  render() {
+    const _ = this;
     const titleProps = (function(){
       let t; return {
         type:'text', value:_.state.form.Title,
@@ -492,13 +516,17 @@ class EditModal extends React.Component {
     const s = p.survey;
     this.state = {
       form: {
-        Title: s.Title||'',
-        Owners: (s.Owners?.results||[]).map(o=>({Id:o.Id,Title:o.Title,Key:null})),
-        StartDate: s.StartDate?new Date(s.StartDate).toISOString().split('T')[0]:'',
-        EndDate:   s.EndDate?new Date(s.EndDate).toISOString().split('T')[0]:'',
-        Status:    s.Status||'Draft'
+        Title: s.Title || '',
+        Owners: (s.Owners?.results || []).map(o => ({ Id: o.Id, Title: o.Title, Key: null })),
+        StartDate: s.StartDate ? new Date(s.StartDate).toISOString().split('T')[0] : '',
+        EndDate:   s.EndDate   ? new Date(s.EndDate).toISOString().split('T')[0] : '',
+        Status:    s.Status || 'Draft'
       },
-      searchTerm:'', searchResults:[], loading:false, showDD:false, saving:false
+      searchTerm: '',
+      searchResults: [],
+      loading: false,
+      showDD: false,
+      saving: false
     };
   }
   componentDidUpdate(prev) {
@@ -512,55 +540,70 @@ class EditModal extends React.Component {
       }, 300);
     } else if (!this.state.searchTerm) this.setState({searchResults:[],showDD:false});
   }
-  addOwner(u){
-    this.setState(s=>({
-      form:{...s.form, Owners: s.form.Owners.concat({Id:u.Id, Title:u.Title, Key:u.Key})},
-      searchTerm:'', showDD:false
+  addOwner(u) {
+    this.setState(prev => {
+      const newOwners = prev.form.Owners.map(o => ({ ...o }));
+      newOwners.push({ Id: u.Id, Title: u.Title, Key: u.Key });
+      return {
+        form: { ...prev.form, Owners: newOwners },
+        searchTerm: '',
+        showDD: false
+      };
+    });
+  }
+  remOwner(id) {
+    if (id === this.props.currentUserId) {
+      this.props.addNotification('Cannot remove yourself', 'error');
+      return;
+    }
+    this.setState(prev => ({
+      form: {
+        ...prev.form,
+        Owners: prev.form.Owners
+          .map(o => ({ ...o }))
+          .filter(o => o.Id !== id)
+      }
     }));
   }
-  remOwner(id){
-    if (id===this.props.currentUserId) { this.props.addNotification('Cannot remove yourself','error'); return; }
-    this.setState(s=>({form:{...s.form,Owners:s.form.Owners.filter(o=>o.Id!==id)}}));
-  }
-  save(){
-    const f=this.state.form;
-    if (!f.Title.trim()) return this.props.addNotification('Title required','error');
-    if (f.StartDate && f.EndDate && new Date(f.EndDate)<=new Date(f.StartDate))
-      return this.props.addNotification('End date must be after start','error');
+  save() {
+    const f = this.state.form;
+    if (!f.Title.trim()) return this.props.addNotification('Title required', 'error');
+    if (f.StartDate && f.EndDate && new Date(f.EndDate) <= new Date(f.StartDate))
+      return this.props.addNotification('End date must be after start', 'error');
 
     const isAuthor = this.props.survey.AuthorId === this.props.currentUserId;
-    this.setState({saving:true});
-    getDigest().then(digest=>{
-      const payload = { __metadata:{type:'SP.Data.SurveysListItem'}, Title:f.Title, Status:f.Status };
+    this.setState({saving: true});
+    getDigest().then(digest => {
+      const payload = { __metadata: { type: 'SP.Data.SurveysListItem' }, Title: f.Title, Status: f.Status };
       if (f.StartDate) payload.StartDate = new Date(f.StartDate).toISOString();
       if (f.EndDate)   payload.EndDate   = new Date(f.EndDate).toISOString();
-      if (isAuthor) payload.OwnersId = { results: f.Owners.map(o => o.Key).filter(k=>k) };
+      if (isAuthor) payload.OwnersId = { results: f.Owners.map(o => o.Key).filter(k => k !== null) };
 
       return $.ajax({
         url: spUrl(`_api/web/lists/getbytitle('Surveys')/items(${this.props.survey.Id})`),
-        type:'POST',
-        data:JSON.stringify(payload),
-        headers:{
-          Accept:'application/json;odata=verbose',
-          'Content-Type':'application/json;odata=verbose',
-          'X-HTTP-Method':'MERGE',
-          'If-Match':'*',
-          'X-RequestDigest':digest
+        type: 'POST',
+        data: JSON.stringify(payload),
+        headers: {
+          Accept: 'application/json;odata=verbose',
+          'Content-Type': 'application/json;odata=verbose',
+          'X-HTTP-Method': 'MERGE',
+          'If-Match': '*',
+          'X-RequestDigest': digest
         },
-        xhrFields:{withCredentials:true}
+        xhrFields: { withCredentials: true }
       });
-    }).then(()=>{
-      grantEditPermissionToOwners(this.props.survey.Id, f.Owners.map(o=>o.Id),
-        ()=>{ this.props.addNotification('Updated!','success'); setTimeout(()=>this.props.loadSurveys(),1000); this.props.onClose(); },
-        ()=>{ this.setState({saving:false}); });
-    }).catch(err=>{
+    }).then(() => {
+      grantEditPermissionToOwners(this.props.survey.Id, f.Owners.map(o => o.Id),
+        () => { this.props.addNotification('Updated!', 'success'); setTimeout(() => this.props.loadSurveys(), 1000); this.props.onClose(); },
+        () => { this.setState({saving: false}); });
+    }).catch(err => {
       console.error(err);
-      this.props.addNotification('Save failed','error');
-      this.setState({saving:false});
+      this.props.addNotification('Save failed', 'error');
+      this.setState({saving: false});
     });
   }
-  render(){
-    const _=this;
+  render() {
+    const _ = this;
     const isAuthor = this.props.survey.AuthorId === this.props.currentUserId;
     const titleProps = (function(){
       let t; return {
@@ -662,110 +705,110 @@ class App extends React.Component {
   constructor(p) {
     super(p);
     this.state = {
-      surveys:[], filtered:[], userId:null, userName:null,
-      notifs:[], editing:null, qr:null, deleting:null, creating:false, sidebar:false
+      surveys: [], filtered: [], userId: null, userName: null,
+      notifs: [], editing: null, qr: null, deleting: null, creating: false, sidebar: false
     };
     this.load = this.load.bind(this);
     this.addNotif = this.addNotif.bind(this);
     this.del = this.del.bind(this);
     this.filter = this.filter.bind(this);
   }
-  componentDidMount(){
-    ExecuteOrDelayUntilScriptLoaded(()=>{
+  componentDidMount() {
+    ExecuteOrDelayUntilScriptLoaded(() => {
       $.ajax({
         url: spUrl('_api/web/currentuser'),
-        headers:{Accept:'application/json;odata=verbose'},
-        xhrFields:{withCredentials:true}
-      }).done(d=>this.setState({userId:d.d.Id,userName:d.d.Title},this.load));
-    },'sp.js');
+        headers: { Accept: 'application/json;odata=verbose' },
+        xhrFields: { withCredentials: true }
+      }).done(d => this.setState({ userId: d.d.Id, userName: d.d.Title }, this.load));
+    }, 'sp.js');
   }
-  load(){
+  load() {
     $.ajax({
       url: spUrl('_api/web/lists/getbytitle(\'Surveys\')/items?$select=Id,Title,Owners/Id,Owners/Title,StartDate,EndDate,Status,AuthorId,Created&$expand=Owners'),
-      headers:{Accept:'application/json;odata=verbose'},
-      xhrFields:{withCredentials:true}
-    }).done(data=>{
-      const surveys = data.d.results.sort((a,b)=>new Date(b.Created)-new Date(a.Created));
-      Promise.all(surveys.map(s=>
+      headers: { Accept: 'application/json;odata=verbose' },
+      xhrFields: { withCredentials: true }
+    }).done(data => {
+      const surveys = data.d.results.sort((a, b) => new Date(b.Created) - new Date(a.Created));
+      Promise.all(surveys.map(s =>
         $.ajax({
           url: spUrl(`_api/web/lists/getbytitle('SurveyResponses')/items?$filter=SurveyID/Id eq ${s.Id}`),
-          headers:{Accept:'application/json;odata=verbose'},
-          xhrFields:{withCredentials:true}
-        }).then(r=>{ s.responseCount=r.d.results.length; return s; })
-          .catch(()=>{ s.responseCount=0; return s; })
-      )).then(all=>this.setState({surveys:all,filtered:all}));
-    }).fail(()=>this.addNotif('Load failed','error'));
+          headers: { Accept: 'application/json;odata=verbose' },
+          xhrFields: { withCredentials: true }
+        }).then(r => { s.responseCount = r.d.results.length; return s; })
+          .catch(() => { s.responseCount = 0; return s; })
+      )).then(all => this.setState({ surveys: all, filtered: all }));
+    }).fail(() => this.addNotif('Load failed', 'error'));
   }
-  addNotif(msg,type='success'){
-    const id=Date.now();
-    this.setState(s=>({notifs:s.notifs.concat([{id,msg,type}])}));
-    setTimeout(()=>this.setState(s=>({notifs:s.notifs.filter(n=>n.id!==id)})),5000);
+  addNotif(msg, type = 'success') {
+    const id = Date.now();
+    this.setState(s => ({ notifs: s.notifs.concat([{ id, msg, type }]) }));
+    setTimeout(() => this.setState(s => ({ notifs: s.notifs.filter(n => n.id !== id) })), 5000);
   }
-  del(id){
-    this.setState({deleting:null});
-    getDigest().then(d=>$.ajax({
+  del(id) {
+    this.setState({ deleting: null });
+    getDigest().then(d => $.ajax({
       url: spUrl(`_api/web/lists/getbytitle('Surveys')/items(${id})`),
-      type:'POST',
-      headers:{'X-HTTP-Method':'DELETE','If-Match':'*','X-RequestDigest':d},
-      xhrFields:{withCredentials:true}
-    }).done(()=>{this.addNotif('Deleted');this.load();})
-      .fail(()=>this.addNotif('Delete failed','error')));
+      type: 'POST',
+      headers: { 'X-HTTP-Method': 'DELETE', 'If-Match': '*', 'X-RequestDigest': d },
+      xhrFields: { withCredentials: true }
+    }).done(() => { this.addNotif('Deleted'); this.load(); })
+      .fail(() => this.addNotif('Delete failed', 'error')));
   }
-  filter(term,status){
+  filter(term, status) {
     let list = [...this.state.surveys];
-    if (term) list = list.filter(s=>s.Title.toLowerCase().includes(term.toLowerCase()));
-    const today = new Date(); today.setHours(0,0,0,0);
-    if (status!=='All'){
-      list = list.filter(s=>{
-        const st = s.StartDate?new Date(s.StartDate):null;
-        const en = s.EndDate?new Date(s.EndDate):null;
-        switch(status){
-          case 'Published': return s.Status==='Published';
-          case 'Draft': return s.Status==='Draft';
-          case 'Upcoming': return st && st>today;
-          case 'Running': return st && en && st<=today && en>=today && s.Status==='Published';
+    if (term) list = list.filter(s => s.Title.toLowerCase().includes(term.toLowerCase()));
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (status !== 'All') {
+      list = list.filter(s => {
+        const st = s.StartDate ? new Date(s.StartDate) : null;
+        const en = s.EndDate ? new Date(s.EndDate) : null;
+        switch (status) {
+          case 'Published': return s.Status === 'Published';
+          case 'Draft': return s.Status === 'Draft';
+          case 'Upcoming': return st && st > today;
+          case 'Running': return st && en && st <= today && en >= today && s.Status === 'Published';
           default: return true;
         }
       });
     }
-    this.setState({filtered:list});
+    this.setState({ filtered: list });
   }
-  render(){
-    const _=this;
-    const cards = this.state.filtered.map(s=>
-      React.createElement(SurveyCard,{
-        key:s.Id, survey:s, currentUserId:this.state.userId,
-        onViewQR:()=>this.setState({qr:s}),
-        onEditMetadata:()=>this.setState({editing:s}),
-        onDelete:()=>this.setState({deleting:s}),
-        addNotification:this.addNotif.bind(this)
+  render() {
+    const _ = this;
+    const cards = this.state.filtered.map(s =>
+      React.createElement(SurveyCard, {
+        key: s.Id, survey: s, currentUserId: this.state.userId,
+        onViewQR: () => this.setState({ qr: s }),
+        onEditMetadata: () => this.setState({ editing: s }),
+        onDelete: () => this.setState({ deleting: s }),
+        addNotification: this.addNotif.bind(this)
       })
     );
-    return React.createElement('div',{className:'min-h-screen bg-gray-100'},
-      React.createElement(TopNav,{currentUserName:this.state.userName,onToggleSidebar:()=>this.setState(p=>({sidebar:!p.sidebar})),isSidebarOpen:this.state.sidebar}),
-      React.createElement('div',{className:'flex pt-16'},
-        React.createElement(SideNav,{isOpen:this.state.sidebar,onFilter:this.filter.bind(this)}),
-        React.createElement('main',{className:'flex-1 p-4'},
-          React.createElement('div',{className:'flex justify-between items-center mb-4'},
-            React.createElement('h1',{className:'text-2xl font-bold'},'Forms'),
-            React.createElement('button',{className:'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center',
-              onClick:()=>this.setState({creating:true})
-            },React.createElement('i',{className:'fas fa-plus mr-2'}),'Create New Form')
+    return React.createElement('div', { className: 'min-h-screen bg-gray-100' },
+      React.createElement(TopNav, { currentUserName: this.state.userName, onToggleSidebar: () => this.setState(p => ({ sidebar: !p.sidebar })), isSidebarOpen: this.state.sidebar }),
+      React.createElement('div', { className: 'flex pt-16' },
+        React.createElement(SideNav, { isOpen: this.state.sidebar, onFilter: this.filter.bind(this) }),
+        React.createElement('main', { className: 'flex-1 p-4' },
+          React.createElement('div', { className: 'flex justify-between items-center mb-4' },
+            React.createElement('h1', { className: 'text-2xl font-bold' }, 'Forms'),
+            React.createElement('button', { className: 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center',
+              onClick: () => this.setState({ creating: true })
+            }, React.createElement('i', { className: 'fas fa-plus mr-2' }), 'Create New Form')
           ),
-          React.createElement('div',{className:'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4'},cards)
+          React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4' }, cards)
         )
       ),
-      this.state.notifs.map(n=>React.createElement(Notification,{key:n.id,message:n.msg,type:n.type})),
-      this.state.qr && React.createElement(QRModal,{survey:this.state.qr,onClose:()=>this.setState({qr:null}),addNotification:this.addNotif.bind(this)}),
-      this.state.deleting && React.createElement(DeleteModal,{survey:this.state.deleting,
-        onConfirm:()=>this.del(this.state.deleting.Id), onCancel:()=>this.setState({deleting:null})}),
-      this.state.creating && React.createElement(CreateFormModal,{
-        currentUserId:this.state.userId, currentUserName:this.state.userName,
-        addNotification:this.addNotif.bind(this), loadSurveys:this.load, onClose:()=>this.setState({creating:false})
+      this.state.notifs.map(n => React.createElement(Notification, { key: n.id, message: n.msg, type: n.type })),
+      this.state.qr && React.createElement(QRModal, { survey: this.state.qr, onClose: () => this.setState({ qr: null }), addNotification: this.addNotif.bind(this) }),
+      this.state.deleting && React.createElement(DeleteModal, { survey: this.state.deleting,
+        onConfirm: () => this.del(this.state.deleting.Id), onCancel: () => this.setState({ deleting: null }) }),
+      this.state.creating && React.createElement(CreateFormModal, {
+        currentUserId: this.state.userId, currentUserName: this.state.userName,
+        addNotification: this.addNotif.bind(this), loadSurveys: this.load, onClose: () => this.setState({ creating: false })
       }),
-      this.state.editing && React.createElement(EditModal,{
-        survey:this.state.editing, currentUserId:this.state.userId,
-        addNotification:this.addNotif.bind(this), loadSurveys:this.load, onClose:()=>this.setState({editing:null})
+      this.state.editing && React.createElement(EditModal, {
+        survey: this.state.editing, currentUserId: this.state.userId,
+        addNotification: this.addNotif.bind(this), loadSurveys: this.load, onClose: () => this.setState({ editing: null })
       })
     );
   }
@@ -774,7 +817,7 @@ class App extends React.Component {
 // -------------------------------------------------------------------
 // 16. RENDER – after sp.js
 // -------------------------------------------------------------------
-ExecuteOrDelayUntilScriptLoaded(()=>{
+ExecuteOrDelayUntilScriptLoaded(() => {
   const root = document.getElementById('root');
   if (root) ReactDOM.render(React.createElement(App), root);
 }, 'sp.js');
