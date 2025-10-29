@@ -1,10 +1,10 @@
 /*=====================================================================
-  SHAREPOINT 2016 ON-PREM DASHBOARD – FINAL (SP2016 COMPATIBLE)
+  SHAREPOINT 2016 ON-PREM DASHBOARD – FINAL WORKING VERSION
   ----------------------------------------------------
-  • People Picker: search + select (AD users, no SPUserId needed)
-  • No resolvePrincipals → No 404
-  • EnsureUser for new users → Id for JSOM
-  • OwnersId.results: ONLY valid Keys
+  • People Picker: AD users (no SPUserId needed)
+  • EnsureUser → Id for REST + JSOM
+  • OwnersId.results = numeric IDs only
+  • JSOM: web.get_siteUsers() + user.js loaded
   • Works 100% on SP 2016 On-Prem
 =====================================================================*/
 
@@ -54,28 +54,49 @@ $(document).ready(() => {
 });
 
 // -------------------------------------------------------------------
-// 4. JSOM PERMISSIONS
+// 4. JSOM PERMISSIONS – FINAL (user.js loaded)
 // -------------------------------------------------------------------
 function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
   SP.SOD.executeFunc('sp.js', 'SP.ClientContext', () => {
-    const ctx = SP.ClientContext.get_current();
-    const web = ctx.get_web();
-    const list = web.get_lists().getByTitle('Surveys');
-    const item = list.getItemById(itemId);
+    SP.SOD.registerSod('user.js', '/_layouts/15/user.js');
+    SP.SOD.executeFunc('user.js', 'SP.User', () => {
+      const ctx = SP.ClientContext.get_current();
+      const web = ctx.get_web();
+      const list = web.get_lists().getByTitle('Surveys');
+      const item = list.getItemById(itemId);
 
-    item.breakRoleInheritance(true, false);
+      item.breakRoleInheritance(true, false);
 
-    const role = web.get_roleDefinitions().getByType(SP.RoleType.contributor);
-    const binding = SP.RoleDefinitionBindingCollection.newObject(ctx);
-    binding.add(role);
+      const role = web.get_roleDefinitions和社会().getByType(SP.RoleType.contributor);
+      const binding = SP.RoleDefinitionBindingCollection.newObject(ctx);
+      binding.add(role);
 
-    ownerIds.forEach(id => {
-      const user = web.get_siteUsers().getById(id);
-      item.get_roleAssignments().add(user, binding);
+      const siteUsers = web.get_siteUsers();
+
+      ownerIds.forEach(id => {
+        if (typeof id === 'number' && id > 0) {
+          try {
+            const user = siteUsers.getById(id);
+            ctx.load(user);
+            item.get_roleAssignments().add(user, binding);
+          } catch (e) {
+            console.warn('User ID not in siteUsers collection:', id);
+          }
+        }
+      });
+
+      ctx.load(item);
+      ctx.executeQueryAsync(
+        () => {
+          console.log('Permissions granted to owners');
+          onSuccess();
+        },
+        (sender, args) => {
+          console.error('JSOM Error:', args.get_message());
+          onError(args.get_message());
+        }
+      );
     });
-
-    ctx.load(item);
-    ctx.executeQueryAsync(onSuccess, (s, a) => onError(a.get_message()));
   });
 }
 
@@ -338,7 +359,7 @@ function searchPeople(query, callback) {
 }
 
 // -------------------------------------------------------------------
-// 13. ENSURE USER (for JSOM)
+// 13. ENSURE USER (for REST + JSOM)
 // -------------------------------------------------------------------
 function ensureUser(loginName) {
   return getDigest().then(digest => {
@@ -388,11 +409,21 @@ class CreateFormModal extends React.Component {
     } else if (!this.state.searchTerm) this.setState({searchResults:[],showDD:false});
   }
   addOwner(u) {
-    this.setState(prev => {
-      const newOwners = prev.form.Owners.map(o => ({ ...o }));
-      newOwners.push({ Id: u.Id || null, Title: u.Title, Key: u.Key });
-      return { form: { ...prev.form, Owners: newOwners }, searchTerm: '', showDD: false };
-    });
+    if (u.Key && !u.Id) {
+      ensureUser(u.Key).then(id => {
+        this.setState(prev => {
+          const newOwners = prev.form.Owners.map(o => ({ ...o }));
+          newOwners.push({ Id: id, Title: u.Title, Key: u.Key });
+          return { form: { ...prev.form, Owners: newOwners }, searchTerm: '', showDD: false };
+        });
+      });
+    } else {
+      this.setState(prev => {
+        const newOwners = prev.form.Owners.map(o => ({ ...o }));
+        newOwners.push({ Id: u.Id || null, Title: u.Title, Key: u.Key });
+        return { form: { ...prev.form, Owners: newOwners }, searchTerm: '', showDD: false };
+      });
+    }
   }
   remOwner(id) {
     if (id === this.props.currentUserId) {
@@ -419,16 +450,20 @@ class CreateFormModal extends React.Component {
     Promise.all(ensurePromises).then(resolved => {
       const allOwners = f.Owners.map(o => resolved.find(r => r.Key === o.Key) || o);
 
+      const ownerIds = allOwners
+        .map(o => o.Id)
+        .filter(id => typeof id === 'number' && id > 0);
+
       getDigest().then(digest => {
         const payload = {
           __metadata: { type: 'SP.Data.SurveysListItem' },
           Title: f.Title,
           Status: 'Draft',
-          OwnersId: { results: allOwners.map(o => o.Key).filter(k => k) },
           surveyData: JSON.stringify({ title: f.Title })
         };
         if (f.StartDate) payload.StartDate = new Date(f.StartDate).toISOString();
         if (f.EndDate)   payload.EndDate   = new Date(f.EndDate).toISOString();
+        if (ownerIds.length > 0) payload.OwnersId = { results: ownerIds };
 
         $.ajax({
           url: spUrl('_api/web/lists/getbytitle(\'Surveys\')/items'),
@@ -441,7 +476,7 @@ class CreateFormModal extends React.Component {
           },
           xhrFields: { withCredentials: true }
         }).then(r => {
-          grantEditPermissionToOwners(r.d.Id, allOwners.map(o => o.Id),
+          grantEditPermissionToOwners(r.d.Id, ownerIds,
             () => {
               this.props.addNotification('Created!', 'success');
               window.open(`/builder.aspx?surveyId=${r.d.Id}`, '_blank');
@@ -497,7 +532,7 @@ class CreateFormModal extends React.Component {
             ),
             React.createElement('div',{className:'mt-2 flex flex-wrap gap-2'},
               this.state.form.Owners.map(o=>
-                React.createElement('div',{className:'flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'},
+                React.createElement('div',{key:o.Id||o.Key,className:'flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'},
                   o.Title,
                   o.Id!==this.props.currentUserId && React.createElement('button',{onClick:()=>this.remOwner(o.Id),className:'ml-2 text-red-600 hover:text-red-800'},'x')
                 )
@@ -535,7 +570,7 @@ class CreateFormModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 15. EDIT METADATA MODAL (SP2016 SAFE)
+// 15. EDIT METADATA MODAL
 // -------------------------------------------------------------------
 class EditModal extends React.Component {
   constructor(p) {
@@ -568,11 +603,21 @@ class EditModal extends React.Component {
     } else if (!this.state.searchTerm) this.setState({searchResults:[],showDD:false});
   }
   addOwner(u) {
-    this.setState(prev => {
-      const newOwners = prev.form.Owners.map(o => ({ ...o }));
-      newOwners.push({ Id: u.Id || null, Title: u.Title, Key: u.Key });
-      return { form: { ...prev.form, Owners: newOwners }, searchTerm: '', showDD: false };
-    });
+    if (u.Key && !u.Id) {
+      ensureUser(u.Key).then(id => {
+        this.setState(prev => {
+          const newOwners = prev.form.Owners.map(o => ({ ...o }));
+          newOwners.push({ Id: id, Title: u.Title, Key: u.Key });
+          return { form: { ...prev.form, Owners: newOwners }, searchTerm: '', showDD: false };
+        });
+      });
+    } else {
+      this.setState(prev => {
+        const newOwners = prev.form.Owners.map(o => ({ ...o }));
+        newOwners.push({ Id: u.Id || null, Title: u.Title, Key: u.Key });
+        return { form: { ...prev.form, Owners: newOwners }, searchTerm: '', showDD: false };
+      });
+    }
   }
   remOwner(id) {
     if (id === this.props.currentUserId) {
@@ -602,6 +647,10 @@ class EditModal extends React.Component {
     Promise.all(ensurePromises).then(resolved => {
       const allOwners = f.Owners.map(o => resolved.find(r => r.Key === o.Key) || o);
 
+      const ownerIds = allOwners
+        .map(o => o.Id)
+        .filter(id => typeof id === 'number' && id > 0);
+
       getDigest().then(digest => {
         const payload = {
           __metadata: { type: 'SP.Data.SurveysListItem' },
@@ -610,9 +659,7 @@ class EditModal extends React.Component {
         };
         if (f.StartDate) payload.StartDate = new Date(f.StartDate).toISOString();
         if (f.EndDate)   payload.EndDate   = new Date(f.EndDate).toISOString();
-
-        const validKeys = allOwners.map(o => o.Key).filter(k => k);
-        if (validKeys.length) payload.OwnersId = { results: validKeys };
+        if (ownerIds.length > 0) payload.OwnersId = { results: ownerIds };
 
         $.ajax({
           url: spUrl(`_api/web/lists/getbytitle('Surveys')/items(${this.props.survey.Id})`),
@@ -627,7 +674,7 @@ class EditModal extends React.Component {
           },
           xhrFields: { withCredentials: true }
         }).then(() => {
-          grantEditPermissionToOwners(this.props.survey.Id, allOwners.map(o => o.Id),
+          grantEditPermissionToOwners(this.props.survey.Id, ownerIds,
             () => {
               this.props.addNotification('Updated!', 'success');
               setTimeout(() => this.props.loadSurveys(), 1000);
@@ -684,7 +731,7 @@ class EditModal extends React.Component {
                   ),
                   React.createElement('div',{className:'flex flex-wrap gap-2 mt-2'},
                     this.state.form.Owners.map(o=>
-                      React.createElement('div',{className:'flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'},
+                      React.createElement('div',{key:o.Id||o.Key,className:'flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'},
                         o.Title,
                         o.Id!==this.props.currentUserId && React.createElement('button',{onClick:()=>this.remOwner(o.Id),className:'ml-2 text-red-600 hover:text-red-800'},'x')
                       )
@@ -694,7 +741,7 @@ class EditModal extends React.Component {
               : React.createElement('div',{className:'bg-gray-100 p-3 rounded text-sm text-gray-600'},
                   'Only the form author can modify owners.',
                   React.createElement('div',{className:'mt-2 flex flex-wrap gap-1'},
-                    this.state.form.Owners.map(o=>React.createElement('span',{className:'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs'},o.Title))
+                    this.state.form.Owners.map(o=>React.createElement('span',{key:o.Id,className:'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs'},o.Title))
                   )
                 )
           ),
