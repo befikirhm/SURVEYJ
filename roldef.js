@@ -4,16 +4,16 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
   getDigest().then(digest => {
     const listUrl = spUrl(`_api/web/lists/getbytitle('Surveys')`);
     const itemUrl = listUrl + `/items(${itemId})`;
-    const LIST_GUID = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'; // REPLACE WITH YOUR LIST GUID
+    const LIST_GUID = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'; // REPLACE
 
-    // 1. Break inheritance via REST
+    // 1. Break inheritance
     $.ajax({
       url: itemUrl + '/breakroleinheritance(copyRoleAssignments=false)',
       method: 'POST',
       headers: { 'X-RequestDigest': digest },
       xhrFields: { withCredentials: true }
     }).then(() => {
-      // 2. SOAP: Assign Full Control to each owner
+      // 2. SOAP: Assign FULL CONTROL (decimal mask)
       const soapPromises = ownerIds.map(principalId => {
         const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
           <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -23,7 +23,7 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
               <AddPermission xmlns="http://schemas.microsoft.com/sharepoint/soap/directory/">
                 <objectId>${itemId}</objectId>
                 <objectType>ListItem</objectType>
-                <permissionMask>0x7FFFFFFFFFFFFFFF</permissionMask>
+                <permissionMask>9223372036854775807</permissionMask>
                 <principalId>${principalId}</principalId>
                 <principalType>User</principalType>
                 <listId>${LIST_GUID}</listId>
@@ -46,7 +46,7 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
 
       Promise.all(soapPromises)
         .then(() => {
-          // Optional: Grant Read on List
+          // Optional: List Read
           const listPromises = ownerIds.map(id =>
             $.ajax({
               url: listUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741826)`,
