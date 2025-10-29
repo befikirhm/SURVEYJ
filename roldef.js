@@ -4,6 +4,7 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
   getDigest().then(digest => {
     const listUrl = spUrl(`_api/web/lists/getbytitle('Surveys')`);
     const itemUrl = listUrl + `/items(${itemId})`;
+    const LIST_GUID = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'; // REPLACE WITH YOUR LIST GUID
 
     // 1. Break inheritance via REST
     $.ajax({
@@ -12,9 +13,9 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
       headers: { 'X-RequestDigest': digest },
       xhrFields: { withCredentials: true }
     }).then(() => {
-      // 2. Use SOAP to assign FULL CONTROL
+      // 2. SOAP: Assign Full Control to each owner
       const soapPromises = ownerIds.map(principalId => {
-        const soapEnvelope = `
+        const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
           <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                          xmlns:xsd="http://www.w3.org/2001/XMLSchema"
                          xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
@@ -25,7 +26,7 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
                 <permissionMask>0x7FFFFFFFFFFFFFFF</permissionMask>
                 <principalId>${principalId}</principalId>
                 <principalType>User</principalType>
-                <listId>{YOUR_LIST_GUID}</listId>
+                <listId>${LIST_GUID}</listId>
               </AddPermission>
             </soap:Body>
           </soap:Envelope>`;
@@ -45,7 +46,7 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
 
       Promise.all(soapPromises)
         .then(() => {
-          // Optional: Grant Read on List (REST)
+          // Optional: Grant Read on List
           const listPromises = ownerIds.map(id =>
             $.ajax({
               url: listUrl + `/roleassignments/addroleassignment(principalid=${id}, roledefid=1073741826)`,
@@ -58,7 +59,7 @@ function grantEditPermissionToOwners(itemId, ownerIds, onSuccess, onError) {
         })
         .then(onSuccess)
         .catch(err => {
-          console.error('SOAP Permission Error:', err);
+          console.error('SOAP Error:', err);
           onError(err);
         });
     }).catch(onError);
