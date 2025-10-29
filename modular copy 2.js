@@ -1,10 +1,10 @@
 /*=====================================================================
-  SHAREPOINT 2016 ON-PREM DASHBOARD – REACT + JSOM (FULLY FIXED)
+  SHAREPOINT 2016 ON-PREM DASHBOARD – FINAL (SP2016 COMPATIBLE)
   ----------------------------------------------------
   • People Picker: search + select (AD users, no SPUserId needed)
-  • Existing owners: Key resolved via ResolvePrincipals
-  • OwnersId.results: NEVER null
-  • EnsureUser for JSOM permissions
+  • No resolvePrincipals → No 404
+  • EnsureUser for new users → Id for JSOM
+  • OwnersId.results: ONLY valid Keys
   • Works 100% on SP 2016 On-Prem
 =====================================================================*/
 
@@ -298,7 +298,7 @@ class DeleteModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 12. PEOPLE PICKER SEARCH (no SPUserId dependency)
+// 12. PEOPLE PICKER SEARCH
 // -------------------------------------------------------------------
 function searchPeople(query, callback) {
   getDigest().then(digest => {
@@ -338,7 +338,7 @@ function searchPeople(query, callback) {
 }
 
 // -------------------------------------------------------------------
-// 13. ENSURE USER (for JSOM permissions)
+// 13. ENSURE USER (for JSOM)
 // -------------------------------------------------------------------
 function ensureUser(loginName) {
   return getDigest().then(digest => {
@@ -357,56 +357,7 @@ function ensureUser(loginName) {
 }
 
 // -------------------------------------------------------------------
-// 14. RESOLVE KEYS FOR EXISTING OWNERS (EDIT)
-// -------------------------------------------------------------------
-function resolveKeys(ownersWithoutKey) {
-  if (!ownersWithoutKey.length) return Promise.resolve([]);
-
-  return getDigest().then(digest => {
-    return $.ajax({
-      url: spUrl('_api/web/siteusers?$select=LoginName,Title'),
-      headers: { Accept: 'application/json;odata=verbose' },
-      xhrFields: { withCredentials: true }
-    }).then(siteUsers => {
-      const userMap = {};
-      siteUsers.d.results.forEach(u => { userMap[u.Title] = u.LoginName; });
-
-      const toResolve = ownersWithoutKey.map(o => userMap[o.Title] || o.Title);
-
-      return $.ajax({
-        url: spUrl('_api/SP.UI.ApplicationPages.ClientPeoplePickerWebServiceInterface.resolvePrincipals'),
-        method: 'POST',
-        data: JSON.stringify({
-          __metadata: { type: 'SP.UI.ApplicationPages.ClientPeoplePickerResolvePrincipalsParameters' },
-          principalKeys: toResolve,
-          principalType: 1,
-          addToUserInfoList: false
-        }),
-        headers: {
-          'Accept': 'application/json; odata=verbose',
-          'Content-Type': 'application/json; odata=verbose',
-          'X-RequestDigest': digest
-        },
-        xhrFields: { withCredentials: true }
-      });
-    });
-  }).then(resp => {
-    const resolved = JSON.parse(resp.d.ResolvePrincipals);
-    const keyMap = {};
-    resolved.forEach(r => {
-      if (r.Resolved && r.EntityData && r.EntityData.PrincipalType === 'User') {
-        keyMap[r.DisplayText] = r.Key;
-      }
-    });
-    return ownersWithoutKey.map(o => ({
-      ...o,
-      Key: keyMap[o.Title] || null
-    }));
-  });
-}
-
-// -------------------------------------------------------------------
-// 15. CREATE FORM MODAL
+// 14. CREATE FORM MODAL
 // -------------------------------------------------------------------
 class CreateFormModal extends React.Component {
   constructor(p) {
@@ -546,7 +497,7 @@ class CreateFormModal extends React.Component {
             ),
             React.createElement('div',{className:'mt-2 flex flex-wrap gap-2'},
               this.state.form.Owners.map(o=>
-                React.createElement('div',{key:o.Id||o.Key,className:'flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'},
+                React.createElement('div',{className:'flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'},
                   o.Title,
                   o.Id!==this.props.currentUserId && React.createElement('button',{onClick:()=>this.remOwner(o.Id),className:'ml-2 text-red-600 hover:text-red-800'},'x')
                 )
@@ -584,7 +535,7 @@ class CreateFormModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 16. EDIT METADATA MODAL (WITH KEY RESOLUTION)
+// 15. EDIT METADATA MODAL (SP2016 SAFE)
 // -------------------------------------------------------------------
 class EditModal extends React.Component {
   constructor(p) {
@@ -602,27 +553,8 @@ class EditModal extends React.Component {
       searchResults: [],
       loading: false,
       showDD: false,
-      saving: false,
-      resolving: true
+      saving: false
     };
-
-    const ownersWithoutKey = (s.Owners?.results || []).filter(o => true);
-    if (ownersWithoutKey.length) {
-      resolveKeys(ownersWithoutKey).then(resolved => {
-        this.setState(prev => ({
-          form: {
-            ...prev.form,
-            Owners: prev.form.Owners.map(o => {
-              const found = resolved.find(r => r.Id === o.Id);
-              return found ? { ...o, Key: found.Key } : o;
-            })
-          },
-          resolving: false
-        }));
-      }).catch(() => this.setState({ resolving: false }));
-    } else {
-      this.setState({ resolving: false });
-    }
   }
   componentDidUpdate(prev) {
     if (prev.searchTerm !== this.state.searchTerm && this.state.searchTerm) {
@@ -663,59 +595,50 @@ class EditModal extends React.Component {
 
     this.setState({ saving: true });
 
-    const missingKey = f.Owners.filter(o => !o.Key);
-    const resolvePromise = missingKey.length
-      ? resolveKeys(missingKey).then(resolved => {
-          return f.Owners.map(o => resolved.find(r => r.Id === o.Id) || o);
-        })
-      : Promise.resolve(f.Owners);
+    const ensurePromises = f.Owners
+      .filter(o => o.Key && !o.Id)
+      .map(o => ensureUser(o.Key).then(id => ({ ...o, Id: id })));
 
-    resolvePromise.then(allOwners => {
-      const ensurePromises = allOwners
-        .filter(o => o.Key && !o.Id)
-        .map(o => ensureUser(o.Key).then(id => ({ ...o, Id: id })));
+    Promise.all(ensurePromises).then(resolved => {
+      const allOwners = f.Owners.map(o => resolved.find(r => r.Key === o.Key) || o);
 
-      Promise.all(ensurePromises).then(resolved => {
-        const finalOwners = allOwners.map(o => resolved.find(r => r.Key === o.Key) || o);
+      getDigest().then(digest => {
+        const payload = {
+          __metadata: { type: 'SP.Data.SurveysListItem' },
+          Title: f.Title,
+          Status: f.Status
+        };
+        if (f.StartDate) payload.StartDate = new Date(f.StartDate).toISOString();
+        if (f.EndDate)   payload.EndDate   = new Date(f.EndDate).toISOString();
 
-        getDigest().then(digest => {
-          const payload = {
-            __metadata: { type: 'SP.Data.SurveysListItem' },
-            Title: f.Title,
-            Status: f.Status
-          };
-          if (f.StartDate) payload.StartDate = new Date(f.StartDate).toISOString();
-          if (f.EndDate)   payload.EndDate   = new Date(f.EndDate).toISOString();
+        const validKeys = allOwners.map(o => o.Key).filter(k => k);
+        if (validKeys.length) payload.OwnersId = { results: validKeys };
 
-          const validKeys = finalOwners.map(o => o.Key).filter(k => k);
-          if (validKeys.length) payload.OwnersId = { results: validKeys };
-
-          $.ajax({
-            url: spUrl(`_api/web/lists/getbytitle('Surveys')/items(${this.props.survey.Id})`),
-            type: 'POST',
-            data: JSON.stringify(payload),
-            headers: {
-              'Accept': 'application/json;odata=verbose',
-              'Content-Type': 'application/json;odata=verbose',
-              'X-HTTP-Method': 'MERGE',
-              'If-Match': '*',
-              'X-RequestDigest': digest
+        $.ajax({
+          url: spUrl(`_api/web/lists/getbytitle('Surveys')/items(${this.props.survey.Id})`),
+          type: 'POST',
+          data: JSON.stringify(payload),
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'X-HTTP-Method': 'MERGE',
+            'If-Match': '*',
+            'X-RequestDigest': digest
+          },
+          xhrFields: { withCredentials: true }
+        }).then(() => {
+          grantEditPermissionToOwners(this.props.survey.Id, allOwners.map(o => o.Id),
+            () => {
+              this.props.addNotification('Updated!', 'success');
+              setTimeout(() => this.props.loadSurveys(), 1000);
+              this.props.onClose();
             },
-            xhrFields: { withCredentials: true }
-          }).then(() => {
-            grantEditPermissionToOwners(this.props.survey.Id, finalOwners.map(o => o.Id),
-              () => {
-                this.props.addNotification('Updated!', 'success');
-                setTimeout(() => this.props.loadSurveys(), 1000);
-                this.props.onClose();
-              },
-              () => this.setState({ saving: false })
-            );
-          }).catch(err => {
-            console.error(err);
-            this.props.addNotification('Save failed', 'error');
-            this.setState({ saving: false });
-          });
+            () => this.setState({ saving: false })
+          );
+        }).catch(err => {
+          console.error(err);
+          this.props.addNotification('Save failed', 'error');
+          this.setState({ saving: false });
         });
       });
     });
@@ -737,7 +660,6 @@ class EditModal extends React.Component {
           React.createElement('button',{onClick:this.props.onClose,className:'text-gray-600'},'x')
         ),
         React.createElement('div',{className:'p-6 space-y-4 overflow-y-auto max-h-96'},
-          this.state.resolving && React.createElement('div',{className:'text-sm text-gray-500'},'Resolving user permissions...'),
           React.createElement('div',null,
             React.createElement('label',{className:'block mb-1 text-gray-700'},'Title *'),
             React.createElement('input',titleProps)
@@ -762,7 +684,7 @@ class EditModal extends React.Component {
                   ),
                   React.createElement('div',{className:'flex flex-wrap gap-2 mt-2'},
                     this.state.form.Owners.map(o=>
-                      React.createElement('div',{key:o.Id||o.Key,className:'flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'},
+                      React.createElement('div',{className:'flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm'},
                         o.Title,
                         o.Id!==this.props.currentUserId && React.createElement('button',{onClick:()=>this.remOwner(o.Id),className:'ml-2 text-red-600 hover:text-red-800'},'x')
                       )
@@ -772,7 +694,7 @@ class EditModal extends React.Component {
               : React.createElement('div',{className:'bg-gray-100 p-3 rounded text-sm text-gray-600'},
                   'Only the form author can modify owners.',
                   React.createElement('div',{className:'mt-2 flex flex-wrap gap-1'},
-                    this.state.form.Owners.map(o=>React.createElement('span',{key:o.Id,className:'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs'},o.Title))
+                    this.state.form.Owners.map(o=>React.createElement('span',{className:'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs'},o.Title))
                   )
                 )
           ),
@@ -818,7 +740,7 @@ class EditModal extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 17. MAIN APP
+// 16. MAIN APP
 // -------------------------------------------------------------------
 class App extends React.Component {
   constructor(p) {
@@ -934,7 +856,7 @@ class App extends React.Component {
 }
 
 // -------------------------------------------------------------------
-// 18. RENDER – after sp.js
+// 17. RENDER – after sp.js
 // -------------------------------------------------------------------
 ExecuteOrDelayUntilScriptLoaded(() => {
   const root = document.getElementById('root');
