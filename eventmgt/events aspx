@@ -10,13 +10,14 @@
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@3.10.2/dist/fullcalendar.min.css" rel="stylesheet">
 
   <style>
-    body { padding: 15px; }
+    body { padding: 15px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     .card-full { opacity: .6; background: #f9f9f9; }
     .card-past { opacity: .4; filter: grayscale(.8); }
     .spinner { width: 3rem; height: 3rem; border: .25em solid #337ab7; border-right: transparent; border-radius: 50%; animation: spin .75s linear infinite; }
     @keyframes spin { 100% { transform: rotate(360deg); } }
     .fc-event { cursor: pointer; }
-    #calendar { margin-top: 15px; }
+    #calendar, #root { margin-top: 15px; min-height: 400px; }
+    .alert-info { margin: 20px 0; }
   </style>
 </head>
 <body>
@@ -39,8 +40,9 @@
 
   <!-- MAIN -->
   <div class="col-md-9">
-    <div id="loading" class="text-center" style="display:none; margin:2rem;">
+    <div id="loading" class="text-center" style="margin:2rem;">
       <div class="spinner"></div>
+      <p>Loading events...</p>
     </div>
 
     <!-- TABS -->
@@ -57,7 +59,7 @@
 
       <!-- LIST TAB -->
       <div role="tabpanel" class="tab-pane" id="cards">
-        <div id="root"></div> <!-- CARDS RENDER HERE -->
+        <div id="root"></div>
       </div>
     </div>
   </div>
