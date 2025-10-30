@@ -76,7 +76,7 @@ waitForSpContext(function () {
 
       handleSearch(e) {
         this.setState({ search: e.target.value.toLowerCase() }, () => {
-          this.renderCards();
+          this.renderCards();  // Always render on search
         });
       }
 
@@ -91,11 +91,17 @@ waitForSpContext(function () {
               .then(evs => {
                 this.setState({ events: evs, loading: false }, () => {
                   $("#loading").hide();
-                  this.renderCards();
+                  this.renderCards();  // RENDER CARDS HERE
                 });
+              })
+              .catch(err => {
+                console.error("Error processing events:", err);
+                $("#loading").hide();
+                alert("Error processing events.");
               });
           },
-          error: () => {
+          error: err => {
+            console.error("Failed to load events:", err);
             $("#loading").hide();
             alert("Failed to load events. Check list name 'Events'.");
           }
@@ -107,7 +113,7 @@ waitForSpContext(function () {
           url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=UserEmail eq '" + this.userEmail + "'&$select=EventLookupId,Status,WaitlistPosition",
           headers: { Accept: "application/json; odata=verbose" },
           success: d => this.setState({ myRegs: d.d.results || [] }),
-          error: () => {}
+          error: () => console.log("My regs failed")
         });
       }
 
@@ -197,7 +203,7 @@ waitForSpContext(function () {
               $.ajax({
                 url: this.site + "/_api/web/lists/getbytitle('Registrations')/items(" + regId + ")",
                 type: "POST",
-                headers: { "X-RequestDigest": this.digest, "If-Match": "*", "X-HTTP-Method": "DELETE" },
+                headers: { "X-RequestDigest": this.digest, "If-Match": "*", "X-HTTP-METHOD": "DELETE" },
                 success: () => {
                   alert("Registration cancelled");
                   this.loadEvents();
@@ -221,8 +227,8 @@ waitForSpContext(function () {
                 url: this.site + "/_api/web/lists/getbytitle('Registrations')/items(" + reg.Id + ")",
                 type: "POST",
                 data: JSON.stringify({ '__metadata': { type: 'SP.Data.RegistrationsListItem' }, Status: 'Confirmed' }),
-                headers: { "X-RequestDigest": this.digest, "If-Match": "*", "X-HTTP-Method": "MERGE" },
-                success: () => console.log("Auto-promoted waitlist")
+                headers: { "X-RequestDigest": this.digest, "If-Match": "*", "X-HTTP-METHOD": "MERGE" },
+                success: () => console.log("Auto-promoted")
               });
             }
           }
@@ -279,15 +285,12 @@ waitForSpContext(function () {
               React.createElement("div", { className: "panel-footer text-right" }, btn)
             )
           );
-        }) : [React.createElement("div", { key: "no", className: "alert alert-info" }, "No events found.")];
+        }) : [React.createElement("div", { key: "no", className: "alert alert-info" }, jie "No events found. Try adjusting your search.")];
 
         ReactDOM.render(React.createElement("div", { className: "row" }, cards), document.getElementById("root"));
       }
 
       render() {
-        if (this.state.loading) {
-          return null;
-        }
         return null;
       }
     }
