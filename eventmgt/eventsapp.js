@@ -16,6 +16,8 @@ function waitForSpContext(callback) {
 waitForSpContext(function () {
   $(document).ready(function () {
 
+    let appInstance = null;
+
     class App extends React.Component {
       constructor(props) {
         super(props);
@@ -24,11 +26,9 @@ waitForSpContext(function () {
           myRegs: [],
           isAdmin: false,
           search: '',
-          loading: true,  // Show spinner initially
+          loading: true,
           unregId: null
         };
-
-        // Bind methods
         this.handleSearch = this.handleSearch.bind(this);
         this.register = this.register.bind(this);
         this.showUnreg = this.showUnreg.bind(this);
@@ -36,18 +36,23 @@ waitForSpContext(function () {
       }
 
       componentDidMount() {
-        console.log("App mounted. Initializing...");
         this.site = _spPageContextInfo.webAbsoluteUrl;
         this.userEmail = _spPageContextInfo.userLoginName;
         this.digest = $("#__REQUESTDIGEST").val();
 
-        if (!this.site || !this.userEmail || !this.digest) {
-          console.error("Missing context:", { site: this.site, user: this.userEmail, digest: this.digest });
-          alert("Error: Missing SharePoint context. Try refreshing.");
+        if (!this.site || !this.userEmail) {
+          alert("SharePoint context missing.");
           return;
         }
 
         $('#searchBox').on('input', this.handleSearch);
+
+        $('a[data-toggle="tab"]').on('shown.bs.tab', (e) => {
+          if ($(e.target).attr('href') === '#cards' && this.state.events.length > 0) {
+            this.renderCards(this.state.events);
+          }
+        });
+
         this.checkAdmin(() => {
           this.loadEvents();
           this.loadMyRegs();
@@ -64,10 +69,7 @@ waitForSpContext(function () {
             if (admin) this.renderAdminLinks();
             cb();
           },
-          error: err => {
-            console.error("Admin check failed:", err);
-            cb();
-          }
+          error: () => cb()
         });
       }
 
@@ -80,30 +82,32 @@ waitForSpContext(function () {
       }
 
       handleSearch(e) {
-        this.setState({ search: e.target.value.toLowerCase() });
+        this.setState({ search: e.target.value.toLowerCase() }, () => {
+          if ($('#cards').hasClass('active')) {
+            this.renderCards(this.state.events);
+          }
+        });
       }
 
       loadEvents() {
-        console.log("Loading events...");
         const q = "?$select=Id,Title,StartTime,EndTime,Room,Instructor/Title,MaxSeats,AllowRegistration,IsOver,Attachments&$expand=Instructor";
         $.ajax({
           url: this.site + "/_api/web/lists/getbytitle('Events')/items" + q,
           headers: { Accept: "application/json; odata=verbose" },
           success: d => {
-            console.log("Events loaded:", d.d.results.length);
-            const evs = d.d.results.sort((a, b) => new Date(a.StartTime) - new Date(b.StartTime));
+            const evs = (d.d.results || []).sort((a, b) => new Date(a.StartTime) - new Date(b.StartTime));
             Promise.all(evs.map(e => this.getRegCount(e.Id).then(c => ({ ...e, regCount: c }))))
               .then(evs => {
                 this.setState({ events: evs, loading: false }, () => {
+                  $("#loading").hide();
                   this.renderCalendar(evs);
-                  this.renderCards(evs);
+                  if ($('#cards').hasClass('active')) this.renderCards(evs);
                 });
               });
           },
-          error: err => {
-            console.error("Events load failed:", err);
-            this.setState({ loading: false });
-            alert("Failed to load events. Check console.");
+          error: () => {
+            $("#loading").hide();
+            alert("Failed to load events. Check list name 'Events'.");
           }
         });
       }
@@ -112,11 +116,7 @@ waitForSpContext(function () {
         $.ajax({
           url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=UserEmail eq '" + this.userEmail + "'&$select=EventLookupId,Status,WaitlistPosition",
           headers: { Accept: "application/json; odata=verbose" },
-          success: d => {
-            console.log("My registrations:", d.d.results);
-            this.setState({ myRegs: d.d.results });
-          },
-          error: err => console.error("My regs failed:", err)
+          success: d => this.setState({ myRegs: d.d.results || [] })
         });
       }
 
@@ -134,16 +134,15 @@ waitForSpContext(function () {
       register(id) {
         this.setState({ loading: true });
         const event = this.state.events.find(e => e.Id === id);
-        if (!event || !event.AllowRegistration) return alert("Registration closed");
+        if (!event || !event.AllowRegistration) return alert("Closed");
 
         this.getRegCount(id).then(count => {
           const isFull = event.MaxSeats && count >= event.MaxSeats;
-
           if (!isFull) {
             this.createRegistration(id, 'Confirmed', null);
           } else {
             this.getNextWaitlistPosition(id).then(pos => {
-              if (window.confirm(`Event is full. Join waitlist at position ${pos}?`)) {
+              if (confirm(`Full. Join waitlist at #${pos}?`)) {
                 this.createRegistration(id, 'Waitlisted', pos);
               } else {
                 this.setState({ loading: false });
@@ -170,14 +169,12 @@ waitForSpContext(function () {
             "Content-Type": "application/json; odata=verbose"
           },
           success: () => {
-            const msg = status === 'Confirmed' ? 'Registered!' : `Waitlisted at #${position}!`;
-            alert(msg + " Email sent.");
+            alert(status === 'Confirmed' ? 'Registered!' : `Waitlist #${position}`);
             this.loadEvents();
             this.loadMyRegs();
           },
           error: e => {
-            console.error("Registration failed:", e);
-            alert("Error: " + (e.responseJSON?.error?.message?.value || "Unknown"));
+            alert("Error: " + (e.responseJSON?.error?.message?.value || "Try again"));
             this.setState({ loading: false });
           }
         });
@@ -202,7 +199,6 @@ waitForSpContext(function () {
       unregister() {
         const id = this.state.unregId;
         $("#unregModal").modal("hide");
-
         $.ajax({
           url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and UserEmail eq '" + this.userEmail + "'",
           headers: { Accept: "application/json; odata=verbose" },
@@ -260,7 +256,7 @@ waitForSpContext(function () {
           eventClick: e => {
             const ev = this.state.events.find(x => x.Id === e.id);
             if (ev) {
-              alert(`${ev.Title}\n${new Date(ev.StartTime).toLocaleString()} - ${new Date(ev.EndTime).toLocaleString()}\nRoom: ${ev.Room}\nSeats: ${ev.regCount}/${ev.MaxSeats || 'Unlimited'}`);
+              alert(`${ev.Title}\n${new Date(ev.StartTime).toLocaleString()} - ${new Date(ev.EndTime).toLocaleString()}\nRoom: ${ev.Room || 'TBD'}\nSeats: ${ev.regCount}/${ev.MaxSeats || 'Unlimited'}`);
             }
           }
         });
@@ -316,33 +312,20 @@ waitForSpContext(function () {
               React.createElement("div", { className: "panel-footer text-right" }, btn)
             )
           );
-        }) : [React.createElement("div", { key: "no-events", className: "alert alert-info" }, "No events found.")];
+        }) : [React.createElement("div", { key: "no", className: "alert alert-info" }, "No events found.")];
 
-        ReactDOM.render(React.createElement("div", null, cards), document.getElementById("root"));
+        ReactDOM.render(React.createElement("div", { className: "row" }, cards), document.getElementById("root"));
       }
 
-      render() {
-        // Render loading spinner inside #root
-        if (this.state.loading) {
-          return React.createElement("div", { className: "text-center", style: { margin: "2rem" } },
-            React.createElement("div", { className: "spinner" })
-          );
-        }
-        return null; // Cards & calendar are rendered manually
-      }
+      render() { return null; }
     }
 
-    // === MODAL ===
-    $(document).on('click', '#confirmUnreg', function () {
-      window.reactApp && window.reactApp.unregister();
-    });
+    $(document).on('click', '#confirmUnreg', () => appInstance?.unregister());
 
-    // === RENDER APP INTO #root ===
     const app = React.createElement(App);
     ReactDOM.render(app, document.getElementById("root"));
-    window.reactApp = app;
+    appInstance = app;
 
-    // Show loading initially
     $("#loading").show();
   });
 });
