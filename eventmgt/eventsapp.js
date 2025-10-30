@@ -1,4 +1,4 @@
-// === BULLETPROOF SP APP – NO webServerRelativeUrl EVER ===
+// === SP 2016 ON-PREM – CORRECT FIELD NAMES ===
 (function () {
   'use strict';
 
@@ -6,65 +6,85 @@
   function handleError(step, error, userMsg = "An error occurred.") {
     console.error(`[ERROR] ${step}:`, error);
     $("#loading").hide();
-    const msg = `${userMsg}\n\nOpen F12 → Console for details.`;
-    if (document.getElementById('root')) {
-      ReactDOM.render(React.createElement("div", { className: "alert alert-danger" }, msg), document.getElementById('root'));
+    const msg = `${userMsg}\n\nCheck F12 Console for details.`;
+    const root = document.getElementById('root');
+    if (root) {
+      ReactDOM.render(React.createElement("div", { className: "alert alert-danger" }, msg), root);
     } else {
       alert(msg);
     }
   }
 
-  // === SAFE CONTEXT GETTER – NO webServerRelativeUrl ===
-  function getSafeContext() {
-    return new Promise((resolve) => {
-      // 1. Wait for _spPageContextInfo.webAbsoluteUrl
-      function wait() {
-        if (
-          typeof _spPageContextInfo !== 'undefined' &&
-          _spPageContextInfo &&
-          _spPageContextInfo.webAbsoluteUrl &&
-          _spPageContextInfo.userLoginName
-        ) {
-          const site = _spPageContextInfo.webAbsoluteUrl.replace(/\/$/, '');
-          const digest = $("#__REQUESTDIGEST").val() || document.forms[0]?.elements["__REQUESTDIGEST"]?.value || '';
-          resolve({ site, user: _spPageContextInfo.userLoginName, digest });
+  // === GET CONTEXT ===
+  async function getContext() {
+    return new Promise(async (resolve) => {
+      let site = '';
+      let userEmail = '';
+      let digest = '';
+
+      // 1. SITE URL
+      try {
+        if (typeof _spPageContextInfo !== 'undefined' && _spPageContextInfo?.webAbsoluteUrl) {
+          site = _spPageContextInfo.webAbsoluteUrl.replace(/\/$/, '');
         } else {
-          setTimeout(wait, 100);
+          const path = window.location.pathname;
+          const match = path.match(/\/sites\/[^\/]+|\/[^\/]+/);
+          site = window.location.origin + (match ? match[0] : '');
+        }
+        console.log("Site URL:", site);
+      } catch (e) {
+        return handleError("Site URL", e);
+      }
+
+      // 2. USER EMAIL
+      try {
+        const userResp = await $.ajax({
+          url: site + "/_api/web/currentuser",
+          headers: { Accept: "application/json; odata=verbose" },
+          timeout: 10000
+        });
+        userEmail = userResp.d.Email || userResp.d.LoginName;
+        console.log("User Email:", userEmail);
+      } catch (e) {
+        userEmail = _spPageContextInfo?.userLoginName || 'unknown';
+      }
+
+      // 3. DIGEST
+      digest = $("#FormDigest1").val() || $("#__REQUESTDIGEST").val() || '';
+      if (!digest) {
+        try {
+          const resp = await $.ajax({
+            url: site + "/_api/contextinfo",
+            method: "POST",
+            headers: { Accept: "application/json; odata=verbose" }
+          });
+          digest = resp.d.GetContextWebInformation.FormDigestValue;
+        } catch (e) {
+          return handleError("Digest", e);
         }
       }
-      wait();
+      console.log("Digest loaded");
 
-      // Fallback after 10s
-      setTimeout(() => {
-        if (!window.resolvedContext) {
-          const origin = window.location.origin;
-          const path = window.location.pathname;
-          const siteMatch = path.match(/^\/sites\/[^\/]+|\/[^\/]+/);
-          const site = origin + (siteMatch ? siteMatch[0] : '');
-          resolve({ site, user: 'unknown@domain.com', digest: '' });
-        }
-      }, 10000);
+      if (!site || !userEmail || !digest) {
+        return handleError("Context", "Missing site, user, or digest");
+      }
+
+      resolve({ site, userEmail, digest });
     });
   }
 
   // === MAIN APP ===
   $(document).ready(async function () {
-    console.log("DOM Ready. Starting app...");
+    console.log("DOM Ready. Initializing...");
 
     let appInstance = null;
-    window.resolvedContext = null;
 
     try {
-      // === GET CONTEXT SAFELY ===
-      const ctx = await getSafeContext();
-      window.resolvedContext = ctx;
-      console.log("Context loaded:", ctx);
+      const ctx = await getContext();
+      if (!ctx) return;
 
-      if (!ctx.site || !ctx.user || !ctx.digest) {
-        throw new Error("Incomplete context");
-      }
+      console.log("FULL CONTEXT READY");
 
-      // === APP CLASS ===
       class App extends React.Component {
         constructor(props) {
           super(props);
@@ -84,12 +104,12 @@
 
         componentDidMount() {
           this.site = ctx.site;
-          this.userEmail = ctx.user;
+          this.userEmail = ctx.userEmail;
           this.digest = ctx.digest;
 
           $('#searchBox').on('input', this.handleSearch);
           this.checkAdmin(() => {
-            console.log("Admin check done. Starting loadEvents()...");
+            console.log("Admin check done. Loading events...");
             this.loadEvents();
             this.loadMyRegs();
           });
@@ -127,10 +147,16 @@
           });
         }
 
+        // === LOAD EVENTS WITH CORRECT FIELDS ===
         loadEvents() {
           console.log("loadEvents() STARTED");
 
-          const q = "?$select=Id,Title,StartTime,EndTime,Room,Instructor/Title,MaxSeats,AllowRegistration,IsOver,Attachments&$expand=Instructor";
+          // FIELD MAPPING:
+          // StartDate → StartTime
+          // EndDate → EndTime
+          // Location → Room
+          // Instructor → Single Line Text
+          const q = "?$select=Id,Title,StartDate,EndDate,Location,Instructor,MaxSeats,AllowRegistration,IsOver,Attachments";
           const url = this.site + "/_api/web/lists/getbytitle('Events')/items" + q;
 
           $.ajax({
@@ -141,7 +167,19 @@
               console.log("Events loaded:", d.d?.results?.length || 0);
 
               try {
-                let evs = (d.d?.results || []).sort((a, b) => new Date(a.StartTime) - new Date(b.StartTime));
+                let evs = (d.d?.results || []).map(ev => ({
+                  Id: ev.Id,
+                  Title: ev.Title,
+                  StartTime: ev.StartDate,   // MAP
+                  EndTime: ev.EndDate,       // MAP
+                  Room: ev.Location,         // MAP
+                  Instructor: { Title: ev.Instructor }, // MAP to object
+                  MaxSeats: ev.MaxSeats,
+                  AllowRegistration: ev.AllowRegistration,
+                  IsOver: ev.IsOver,
+                  Attachments: ev.Attachments,
+                  regCount: 0
+                })).sort((a, b) => new Date(a.StartTime) - new Date(b.EndTime));
 
                 if (evs.length === 0) {
                   this.setState({ events: [], loading: false }, () => {
@@ -205,9 +243,7 @@
             const full = ev.MaxSeats && count >= ev.MaxSeats;
             if (!full) this.createReg(id, 'Confirmed', null);
             else this.getNextWaitlistPosition(id).then(pos => {
-              if (confirm(`Event is full. Join waitlist at #${pos}?`)) {
-                this.createReg(id, 'Waitlisted', pos);
-              }
+              if (confirm(`Event full. Join waitlist #${pos}?`)) this.createReg(id, 'Waitlisted', pos);
             });
           });
         }
@@ -233,7 +269,10 @@
               this.loadEvents();
               this.loadMyRegs();
             },
-            error: xhr => alert("Error: " + (xhr.responseJSON?.error?.message?.value || "Try again"))
+            error: xhr => {
+              const msg = xhr.responseJSON?.error?.message?.value || "Try again";
+              alert("Registration failed: " + msg);
+            }
           });
         }
 
@@ -272,7 +311,8 @@
                   alert("Cancelled");
                   this.loadEvents();
                   this.loadMyRegs();
-                }
+                },
+                error: () => alert("Failed to cancel")
               });
             }
           });
@@ -316,6 +356,7 @@
                 React.createElement("div", { className: "panel-body" },
                   React.createElement("p", null, "Time: ", new Date(ev.StartTime).toLocaleString(), " - ", new Date(ev.EndTime).toLocaleString()),
                   React.createElement("p", null, "Room: ", ev.Room || "TBD"),
+                  React.createElement("p", null, "Instructor: ", ev.Instructor?.Title || "TBD"),
                   React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
                 ),
                 React.createElement("div", { className: "panel-footer text-right" }, btn)
@@ -329,7 +370,6 @@
         render() { return null; }
       }
 
-      // === RENDER APP ===
       $(document).on('click', '#confirmUnreg', () => appInstance?.unregister());
 
       const app = React.createElement(App);
