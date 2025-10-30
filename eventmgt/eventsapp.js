@@ -1,4 +1,4 @@
-// === ULTRA-SAFE SP LOADER + FULL CONTEXT GUARANTEE ===
+// === BULLETPROOF SP APP – NO webServerRelativeUrl EVER ===
 (function () {
   'use strict';
 
@@ -6,81 +6,65 @@
   function handleError(step, error, userMsg = "An error occurred.") {
     console.error(`[ERROR] ${step}:`, error);
     $("#loading").hide();
-    alert(`${userMsg}\n\nCheck browser console (F12).`);
+    const msg = `${userMsg}\n\nOpen F12 → Console for details.`;
+    if (document.getElementById('root')) {
+      ReactDOM.render(React.createElement("div", { className: "alert alert-danger" }, msg), document.getElementById('root'));
+    } else {
+      alert(msg);
+    }
   }
 
-  // === WAIT FOR SP AND _spPageContextInfo ===
-  function ensureSpContext(callback) {
-    // 1. Wait for sp.js
-    SP.SOD.executeFunc('sp.js', 'SP.ClientContext', function () {
-      console.log("sp.js loaded");
-
-      // 2. Wait for _spPageContextInfo to be fully populated
-      function waitForContext() {
+  // === SAFE CONTEXT GETTER – NO webServerRelativeUrl ===
+  function getSafeContext() {
+    return new Promise((resolve) => {
+      // 1. Wait for _spPageContextInfo.webAbsoluteUrl
+      function wait() {
         if (
           typeof _spPageContextInfo !== 'undefined' &&
           _spPageContextInfo &&
           _spPageContextInfo.webAbsoluteUrl &&
-          _spPageContextInfo.webServerRelativeUrl &&
           _spPageContextInfo.userLoginName
         ) {
-          console.log("_spPageContextInfo fully loaded");
-          callback();
+          const site = _spPageContextInfo.webAbsoluteUrl.replace(/\/$/, '');
+          const digest = $("#__REQUESTDIGEST").val() || document.forms[0]?.elements["__REQUESTDIGEST"]?.value || '';
+          resolve({ site, user: _spPageContextInfo.userLoginName, digest });
         } else {
-          console.log("Waiting for _spPageContextInfo...");
-          setTimeout(waitForContext, 100);
+          setTimeout(wait, 100);
         }
       }
+      wait();
 
-      waitForContext();
-    });
-
-    // Fallback: if SOD fails
-    setTimeout(() => {
-      if (typeof _spPageContextInfo === 'undefined') {
-        console.warn("SOD timeout. Trying fallback...");
-        if (window.location.pathname.includes('/')) {
+      // Fallback after 10s
+      setTimeout(() => {
+        if (!window.resolvedContext) {
+          const origin = window.location.origin;
           const path = window.location.pathname;
-          const siteUrl = window.location.origin + path.substring(0, path.indexOf('/', 1) || path.length);
-          window._spPageContextInfo = {
-            webAbsoluteUrl: siteUrl,
-            webServerRelativeUrl: path.substring(0, path.indexOf('/', 1)) || '/',
-            userLoginName: 'i:0#.f|membership|' + (document.querySelector('[title="Me"]')?.innerText || 'user') + '@contoso.com'
-          };
-          callback();
+          const siteMatch = path.match(/^\/sites\/[^\/]+|\/[^\/]+/);
+          const site = origin + (siteMatch ? siteMatch[0] : '');
+          resolve({ site, user: 'unknown@domain.com', digest: '' });
         }
-      }
-    }, 15000);
-  }
-
-  // === GET DIGEST SAFELY ===
-  function getDigest() {
-    const digest = $("#__REQUESTDIGEST").val();
-    if (digest) return digest;
-    console.warn("No digest found. Forcing refresh...");
-    return document.forms[0]?.elements["__REQUESTDIGEST"]?.value || "";
+      }, 10000);
+    });
   }
 
   // === MAIN APP ===
-  $(document).ready(function () {
-    console.log("DOM Ready. Waiting for SP context...");
+  $(document).ready(async function () {
+    console.log("DOM Ready. Starting app...");
 
-    ensureSpContext(function () {
-      console.log("SP Context READY. Starting app...");
+    let appInstance = null;
+    window.resolvedContext = null;
 
-      const site = _spPageContextInfo.webAbsoluteUrl;
-      const userEmail = _spPageContextInfo.userLoginName;
-      const digest = getDigest();
+    try {
+      // === GET CONTEXT SAFELY ===
+      const ctx = await getSafeContext();
+      window.resolvedContext = ctx;
+      console.log("Context loaded:", ctx);
 
-      if (!site || !userEmail || !digest) {
-        handleError("Context", "Missing site, user, or digest");
-        return;
+      if (!ctx.site || !ctx.user || !ctx.digest) {
+        throw new Error("Incomplete context");
       }
 
-      console.log("Context:", { site, userEmail });
-
-      let appInstance = null;
-
+      // === APP CLASS ===
       class App extends React.Component {
         constructor(props) {
           super(props);
@@ -99,14 +83,13 @@
         }
 
         componentDidMount() {
-          this.site = site;
-          this.userEmail = userEmail;
-          this.digest = digest;
+          this.site = ctx.site;
+          this.userEmail = ctx.user;
+          this.digest = ctx.digest;
 
           $('#searchBox').on('input', this.handleSearch);
-
           this.checkAdmin(() => {
-            console.log("Admin check done. Loading events...");
+            console.log("Admin check done. Starting loadEvents()...");
             this.loadEvents();
             this.loadMyRegs();
           });
@@ -216,13 +199,15 @@
 
         register(id) {
           const ev = this.state.events.find(e => e.Id === id);
-          if (!ev || !ev.AllowRegistration) return alert("Closed");
+          if (!ev || !ev.AllowRegistration) return alert("Registration closed");
 
           this.getRegCount(id).then(count => {
             const full = ev.MaxSeats && count >= ev.MaxSeats;
             if (!full) this.createReg(id, 'Confirmed', null);
             else this.getNextWaitlistPosition(id).then(pos => {
-              if (confirm(`Full. Join waitlist #${pos}?`)) this.createReg(id, 'Waitlisted', pos);
+              if (confirm(`Event is full. Join waitlist at #${pos}?`)) {
+                this.createReg(id, 'Waitlisted', pos);
+              }
             });
           });
         }
@@ -344,17 +329,16 @@
         render() { return null; }
       }
 
+      // === RENDER APP ===
       $(document).on('click', '#confirmUnreg', () => appInstance?.unregister());
 
-      try {
-        const app = React.createElement(App);
-        ReactDOM.render(app, document.getElementById("root"));
-        appInstance = app;
-        $("#loading").show();
-        console.log("App started.");
-      } catch (err) {
-        handleError("App Start", err);
-      }
-    });
+      const app = React.createElement(App);
+      ReactDOM.render(app, document.getElementById("root"));
+      appInstance = app;
+      $("#loading").show();
+
+    } catch (err) {
+      handleError("App Init", err);
+    }
   });
 })();
