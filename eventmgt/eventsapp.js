@@ -24,10 +24,11 @@ waitForSpContext(function () {
           myRegs: [],
           isAdmin: false,
           search: '',
-          loading: false,
+          loading: true,  // Show spinner initially
           unregId: null
         };
 
+        // Bind methods
         this.handleSearch = this.handleSearch.bind(this);
         this.register = this.register.bind(this);
         this.showUnreg = this.showUnreg.bind(this);
@@ -35,9 +36,16 @@ waitForSpContext(function () {
       }
 
       componentDidMount() {
+        console.log("App mounted. Initializing...");
         this.site = _spPageContextInfo.webAbsoluteUrl;
         this.userEmail = _spPageContextInfo.userLoginName;
         this.digest = $("#__REQUESTDIGEST").val();
+
+        if (!this.site || !this.userEmail || !this.digest) {
+          console.error("Missing context:", { site: this.site, user: this.userEmail, digest: this.digest });
+          alert("Error: Missing SharePoint context. Try refreshing.");
+          return;
+        }
 
         $('#searchBox').on('input', this.handleSearch);
         this.checkAdmin(() => {
@@ -56,7 +64,10 @@ waitForSpContext(function () {
             if (admin) this.renderAdminLinks();
             cb();
           },
-          error: () => cb()
+          error: err => {
+            console.error("Admin check failed:", err);
+            cb();
+          }
         });
       }
 
@@ -73,27 +84,26 @@ waitForSpContext(function () {
       }
 
       loadEvents() {
-        this.setState({ loading: true });
-        $("#loading").show();
-
+        console.log("Loading events...");
         const q = "?$select=Id,Title,StartTime,EndTime,Room,Instructor/Title,MaxSeats,AllowRegistration,IsOver,Attachments&$expand=Instructor";
         $.ajax({
           url: this.site + "/_api/web/lists/getbytitle('Events')/items" + q,
           headers: { Accept: "application/json; odata=verbose" },
           success: d => {
+            console.log("Events loaded:", d.d.results.length);
             const evs = d.d.results.sort((a, b) => new Date(a.StartTime) - new Date(b.StartTime));
             Promise.all(evs.map(e => this.getRegCount(e.Id).then(c => ({ ...e, regCount: c }))))
               .then(evs => {
                 this.setState({ events: evs, loading: false }, () => {
-                  $("#loading").hide();
                   this.renderCalendar(evs);
                   this.renderCards(evs);
                 });
               });
           },
-          error: () => {
+          error: err => {
+            console.error("Events load failed:", err);
             this.setState({ loading: false });
-            $("#loading").hide();
+            alert("Failed to load events. Check console.");
           }
         });
       }
@@ -102,8 +112,11 @@ waitForSpContext(function () {
         $.ajax({
           url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=UserEmail eq '" + this.userEmail + "'&$select=EventLookupId,Status,WaitlistPosition",
           headers: { Accept: "application/json; odata=verbose" },
-          success: d => this.setState({ myRegs: d.d.results }),
-          error: () => { }
+          success: d => {
+            console.log("My registrations:", d.d.results);
+            this.setState({ myRegs: d.d.results });
+          },
+          error: err => console.error("My regs failed:", err)
         });
       }
 
@@ -163,7 +176,8 @@ waitForSpContext(function () {
             this.loadMyRegs();
           },
           error: e => {
-            alert("Error: " + e.responseText);
+            console.error("Registration failed:", e);
+            alert("Error: " + (e.responseJSON?.error?.message?.value || "Unknown"));
             this.setState({ loading: false });
           }
         });
@@ -246,7 +260,7 @@ waitForSpContext(function () {
           eventClick: e => {
             const ev = this.state.events.find(x => x.Id === e.id);
             if (ev) {
-              alert(`${ev.Title}\n${new Date(ev.StartTime).toLocaleString()} - ${new Date(ev.EndTime).toLocaleString()}\nRoom: ${ev.Room}\nSeats: ${ev.regCount}/${ev.MaxSeats || '∞'}`);
+              alert(`${ev.Title}\n${new Date(ev.StartTime).toLocaleString()} - ${new Date(ev.EndTime).toLocaleString()}\nRoom: ${ev.Room}\nSeats: ${ev.regCount}/${ev.MaxSeats || 'Unlimited'}`);
             }
           }
         });
@@ -258,7 +272,7 @@ waitForSpContext(function () {
           (e.Room && e.Room.toLowerCase().includes(this.state.search))
         );
 
-        const cards = filtered.map(ev => {
+        const cards = filtered.length > 0 ? filtered.map(ev => {
           const myReg = this.state.myRegs.find(r => r.EventLookupId === ev.Id);
           const isFull = ev.MaxSeats && ev.regCount >= ev.MaxSeats;
           const isPast = new Date(ev.EndTime) < new Date();
@@ -302,13 +316,19 @@ waitForSpContext(function () {
               React.createElement("div", { className: "panel-footer text-right" }, btn)
             )
           );
-        });
+        }) : [React.createElement("div", { key: "no-events", className: "alert alert-info" }, "No events found.")];
 
         ReactDOM.render(React.createElement("div", null, cards), document.getElementById("root"));
       }
 
       render() {
-        return null;
+        // Render loading spinner inside #root
+        if (this.state.loading) {
+          return React.createElement("div", { className: "text-center", style: { margin: "2rem" } },
+            React.createElement("div", { className: "spinner" })
+          );
+        }
+        return null; // Cards & calendar are rendered manually
       }
     }
 
@@ -317,10 +337,12 @@ waitForSpContext(function () {
       window.reactApp && window.reactApp.unregister();
     });
 
-    // === RENDER ===
+    // === RENDER APP INTO #root ===
     const app = React.createElement(App);
     ReactDOM.render(app, document.getElementById("root"));
     window.reactApp = app;
 
+    // Show loading initially
+    $("#loading").show();
   });
-});blaz
+});
