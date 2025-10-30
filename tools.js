@@ -1,23 +1,26 @@
+// == RemoveCommas.js ==
+// Works ONLY on DisplayForm, never breaks the form
 (function () {
-    // Only run if SharePoint client templates are loaded
+    // Safety: exit if SharePoint client-templates are not loaded
     if (typeof SPClientTemplates === 'undefined') return;
 
-    var ctx = {};
-    ctx.Templates = {};
-    ctx.Templates.Fields = {};
+    var override = {};
+    override.Templates = {};
+    override.Templates.Fields = {};
 
-    // === CHANGE THIS TO YOUR INTERNAL COLUMN NAME ===
-    ctx.Templates.Fields["Budget"] = { "DisplayForm": removeCommas };
+    // ---- CHANGE THIS TO YOUR INTERNAL COLUMN NAME ----
+    var internalName = "Budget";      // <-- EDIT THIS LINE ONLY
+    // --------------------------------------------------
 
-    SPClientTemplates.TemplateManager.RegisterTemplateOverrides(ctx);
+    override.Templates.Fields[internalName] = {
+        "DisplayForm": removeCommas
+    };
+
+    SPClientTemplates.TemplateManager.RegisterTemplateOverrides(override);
 })();
 
-function removeCommas(fieldCtx) {
-    if (!fieldCtx || !fieldCtx.CurrentItem) return "";
-
-    var value = fieldCtx.CurrentItem[fieldCtx.CurrentFieldSchema.Name];
-    if (!value) return "";
-
-    // Remove commas and return clean number
-    return value.replace(/,/g, '');
+function removeCommas(ctx) {
+    // ctx is always passed by Shareengine – never null in DisplayForm
+    var raw = ctx.CurrentItem[ctx.CurrentFieldSchema.Name];
+    return (raw == null) ? "" : raw.replace(/,/g, "");
 }
