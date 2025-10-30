@@ -12,11 +12,11 @@ function waitForSpContext(callback) {
   }
 }
 
-// === ERROR HANDLER UTILITY ===
+// === ERROR HANDLER ===
 function handleError(step, error, userMessage = "An error occurred.") {
   console.error(`[ERROR] ${step}:`, error);
   $("#loading").hide();
-  alert(`${userMessage}\n\nDetails in browser console (F12).`);
+  alert(`${userMessage}\n\nCheck browser console (F12) for details.`);
 }
 
 // === MAIN APP ===
@@ -49,37 +49,45 @@ waitForSpContext(function () {
           this.digest = $("#__REQUESTDIGEST").val();
 
           if (!this.site || !this.userEmail || !this.digest) {
-            throw new Error("Missing SharePoint context (site, user, or digest)");
+            throw new Error("Missing SharePoint context: site, user, or digest");
           }
 
+          console.log("SharePoint context loaded:", { site: this.site, user: this.userEmail });
+
           $('#searchBox').on('input', this.handleSearch);
+
+          // === ALWAYS CALL loadEvents() AFTER ADMIN CHECK ===
           this.checkAdmin(() => {
+            console.log("Admin check complete. Loading events...");
             this.loadEvents();
             this.loadMyRegs();
           });
+
         } catch (err) {
-          handleError("Initialization", err, "Failed to initialize app. Please refresh.");
+          handleError("Initialization", err, "App failed to start.");
         }
       }
 
+      // === ADMIN CHECK – ALWAYS CALLS CALLBACK ===
       checkAdmin(cb) {
         $.ajax({
           url: this.site + "/_api/web/currentuser/groups?$filter=Title eq 'Event Managers'",
           headers: { Accept: "application/json; odata=verbose" },
+          timeout: 10000,
           success: d => {
             try {
               const admin = d.d?.results?.length > 0;
+              console.log("Admin status:", admin);
               this.setState({ isAdmin: admin });
               if (admin) this.renderAdminLinks();
-              cb();
             } catch (err) {
-              handleError("Check Admin", err, "Could not verify admin rights.");
-              cb();
+              console.warn("Failed to parse admin response:", err);
             }
+            cb(); // ALWAYS CALL
           },
-          error: xhr => {
-            console.warn("Admin check failed (non-critical):", xhr);
-            cb(); // Continue even if admin check fails
+          error: (xhr) => {
+            console.warn("Admin check failed (non-critical):", xhr.status, xhr.statusText);
+            cb(); // ALWAYS CALL EVEN ON ERROR
           }
         });
       }
@@ -91,6 +99,7 @@ waitForSpContext(function () {
             React.createElement("a", { href: "Survey.aspx", className: "btn btn-info btn-block" }, "Design Survey")
           );
           ReactDOM.render(links, document.getElementById("adminLinks"));
+          console.log("Admin links rendered");
         } catch (err) {
           console.error("Failed to render admin links:", err);
         }
@@ -99,22 +108,29 @@ waitForSpContext(function () {
       handleSearch(e) {
         const value = e.target.value.toLowerCase();
         this.setState({ search: value }, () => {
-          if (!this.state.loading && this.state.events.length > 0) {
-            this.renderCards();
-          }
+          if (!this.state.loading) this.renderCards();
         });
       }
 
+      // === loadEvents() – GUARANTEED TO RUN ===
       loadEvents() {
+        console.log("loadEvents() STARTED");
+
         const q = "?$select=Id,Title,StartTime,EndTime,Room,Instructor/Title,MaxSeats,AllowRegistration,IsOver,Attachments&$expand=Instructor";
+        const url = this.site + "/_api/web/lists/getbytitle('Events')/items" + q;
+
         $.ajax({
-          url: this.site + "/_api/web/lists/getbytitle('Events')/items" + q,
+          url: url,
           headers: { Accept: "application/json; odata=verbose" },
           timeout: 15000,
           success: d => {
+            console.log("Events API success:", d);
+
             try {
-              if (!d?.d?.results) throw new Error("Invalid response format");
-              const evs = d.d.results.sort((a, b) => new Date(a.StartTime) - new Date(b.StartTime));
+              if (!d?.d?.results) throw new Error("Invalid response: no results");
+
+              let evs = d.d.results.sort((a, b) => new Date(a.StartTime) - new Date(b.StartTime));
+              console.log(`Loaded ${evs.length} events`);
 
               if (evs.length === 0) {
                 this.setState({ events: [], loading: false }, () => {
@@ -124,18 +140,26 @@ waitForSpContext(function () {
                 return;
               }
 
-              Promise.all(evs.map(e => this.getRegCount(e.Id).catch(() => 0).then(c => ({ ...e, regCount: c }))))
-                .then(processedEvents => {
-                  this.setState({ events: processedEvents, loading: false }, () => {
+              // Count registrations
+              Promise.all(evs.map(e => this.getRegCount(e.Id).then(c => ({ ...e, regCount: c }))))
+                .then(processed => {
+                  console.log("Events with regCount:", processed);
+                  this.setState({ events: processed, loading: false }, () => {
                     $("#loading").hide();
                     this.renderCards();
                   });
                 })
                 .catch(err => {
-                  handleError("Process Events", err, "Failed to process event registration counts.");
+                  console.error("Failed to count registrations:", err);
+                  // Still show events even if count fails
+                  this.setState({ events: evs.map(e => ({ ...e, regCount: 0 })), loading: false }, () => {
+                    $("#loading").hide();
+                    this.renderCards();
+                  });
                 });
+
             } catch (err) {
-              handleError("Parse Events", err, "Failed to parse events data.");
+              handleError("Parse Events", err, "Failed to process event data.");
             }
           },
           error: (xhr, status, err) => {
@@ -149,13 +173,15 @@ waitForSpContext(function () {
       }
 
       loadMyRegs() {
+        const url = this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=UserEmail eq '" + encodeURIComponent(this.userEmail) + "'&$select=EventLookupId,Status,WaitlistPosition";
         $.ajax({
-          url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=UserEmail eq '" + encodeURIComponent(this.userEmail) + "'&$select=EventLookupId,Status,WaitlistPosition",
+          url: url,
           headers: { Accept: "application/json; odata=verbose" },
           timeout: 10000,
           success: d => {
             try {
               this.setState({ myRegs: d.d?.results || [] });
+              console.log("My registrations loaded:", d.d?.results);
             } catch (err) {
               console.warn("Failed to parse my registrations:", err);
             }
@@ -167,13 +193,13 @@ waitForSpContext(function () {
       }
 
       getRegCount(id) {
-        return new Promise((resolve, reject) => {
+        return new Promise(resolve => {
           $.ajax({
             url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and Status eq 'Confirmed'&$select=Id",
             headers: { Accept: "application/json; odata=verbose" },
             timeout: 8000,
             success: d => resolve(d.d?.results?.length || 0),
-            error: () => resolve(0) // Fallback: assume 0 if count fails
+            error: () => resolve(0)
           });
         });
       }
@@ -181,7 +207,7 @@ waitForSpContext(function () {
       register(id) {
         const event = this.state.events.find(e => e.Id === id);
         if (!event) return alert("Event not found.");
-        if (!event.AllowRegistration) return alert("Registration is closed for this event.");
+        if (!event.AllowRegistration) return alert("Registration closed.");
 
         this.getRegCount(id)
           .then(count => {
@@ -191,14 +217,14 @@ waitForSpContext(function () {
             } else {
               this.getNextWaitlistPosition(id)
                 .then(pos => {
-                  if (confirm(`This event is full. Join waitlist at position #${pos}?`)) {
+                  if (confirm(`Event full. Join waitlist at #${pos}?`)) {
                     this.createRegistration(id, 'Waitlisted', pos);
                   }
                 })
-                .catch(() => alert("Could not determine waitlist position."));
+                .catch(() => alert("Could not get waitlist position."));
             }
           })
-          .catch(() => alert("Could not check seat availability."));
+          .catch(() => alert("Could not check seats."));
       }
 
       createRegistration(eventId, status, position) {
@@ -217,31 +243,28 @@ waitForSpContext(function () {
             "X-RequestDigest": this.digest,
             "Content-Type": "application/json; odata=verbose"
           },
-          timeout: 10000,
           success: () => {
-            const msg = status === 'Confirmed' ? 'Successfully registered!' : `Added to waitlist at #${position}!`;
-            alert(msg);
+            alert(status === 'Confirmed' ? 'Registered!' : `Waitlist #${position}`);
             this.loadEvents();
             this.loadMyRegs();
           },
           error: xhr => {
-            const errMsg = xhr.responseJSON?.error?.message?.value || "Unknown error";
-            alert(`Registration failed: ${errMsg}`);
+            const msg = xhr.responseJSON?.error?.message?.value || "Unknown error";
+            alert(`Registration failed: ${msg}`);
           }
         });
       }
 
       getNextWaitlistPosition(eventId) {
-        return new Promise((resolve, reject) => {
+        return new Promise(resolve => {
           $.ajax({
             url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + eventId + " and Status eq 'Waitlisted'&$orderby=WaitlistPosition desc&$top=1&$select=WaitlistPosition",
             headers: { Accept: "application/json; odata=verbose" },
-            timeout: 8000,
             success: d => {
               const last = d.d?.results?.[0]?.WaitlistPosition;
               resolve((last || 0) + 1);
             },
-            error: () => resolve(1) // Fallback
+            error: () => resolve(1)
           });
         });
       }
@@ -260,32 +283,24 @@ waitForSpContext(function () {
         $.ajax({
           url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and UserEmail eq '" + encodeURIComponent(this.userEmail) + "'",
           headers: { Accept: "application/json; odata=verbose" },
-          timeout: 10000,
           success: d => {
             const reg = d.d?.results?.[0];
-            if (!reg) {
-              alert("No registration found to cancel.");
-              return;
-            }
+            if (!reg) return alert("No registration found.");
 
             $.ajax({
               url: this.site + "/_api/web/lists/getbytitle('Registrations')/items(" + reg.Id + ")",
               type: "POST",
-              headers: {
-                "X-RequestDigest": this.digest,
-                "If-Match": "*",
-                "X-HTTP-METHOD": "DELETE"
-              },
+              headers: { "X-RequestDigest": this.digest, "If-Match": "*", "X-HTTP-METHOD": "DELETE" },
               success: () => {
-                alert("Registration cancelled successfully.");
+                alert("Cancelled");
                 this.loadEvents();
                 this.loadMyRegs();
                 this.autoPromoteWaitlist(id);
               },
-              error: () => alert("Failed to cancel registration.")
+              error: () => alert("Failed to cancel.")
             });
           },
-          error: () => alert("Could not find your registration.")
+          error: () => alert("Could not find registration.")
         });
       }
 
@@ -300,12 +315,8 @@ waitForSpContext(function () {
                 url: this.site + "/_api/web/lists/getbytitle('Registrations')/items(" + next.Id + ")",
                 type: "POST",
                 data: JSON.stringify({ '__metadata': { type: 'SP.Data.RegistrationsListItem' }, Status: 'Confirmed' }),
-                headers: {
-                  "X-RequestDigest": this.digest,
-                  "If-Match": "*",
-                  "X-HTTP-METHOD": "MERGE"
-                },
-                success: () => console.log("Waitlist promoted:", next.Id)
+                headers: { "X-RequestDigest": this.digest, "If-Match": "*", "X-HTTP-METHOD": "MERGE" },
+                success: () => console.log("Promoted:", next.Id)
               });
             }
           }
@@ -362,32 +373,31 @@ waitForSpContext(function () {
               React.createElement("div", { className: "panel-footer text-right" }, btn)
             )
           );
-        }) : [React.createElement("div", { key: "no", className: "alert alert-info" }, "No events found. Try adjusting your search or check back later.")];
+        }) : [React.createElement("div", { key: "no", className: "alert alert-info" }, "No events found.")];
 
         try {
           ReactDOM.render(React.createElement("div", { className: "row" }, cards), document.getElementById("root"));
         } catch (err) {
-          console.error("Failed to render cards:", err);
-          alert("Display error. Please refresh.");
+          console.error("Render failed:", err);
+          alert("Display error.");
         }
       }
 
       render() { return null; }
     }
 
-    // === MODAL CONFIRM ===
-    $(document).on('click', '#confirmUnreg', function () {
-      appInstance?.unregister();
-    });
+    // === MODAL ===
+    $(document).on('click', '#confirmUnreg', () => appInstance?.unregister());
 
-    // === RENDER APP ===
+    // === START APP ===
     try {
       const app = React.createElement(App);
       ReactDOM.render(app, document.getElementById("root"));
       appInstance = app;
       $("#loading").show();
+      console.log("App rendered. Waiting for data...");
     } catch (err) {
-      handleError("App Render", err, "Failed to start the app.");
+      handleError("App Start", err, "Failed to start app.");
     }
   });
 });
