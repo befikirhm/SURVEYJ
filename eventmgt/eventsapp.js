@@ -1,26 +1,37 @@
 $(document).ready(function () {
-  const { createClass, createElement: h } = React;
-
-  const App = createClass({
-    getInitialState: function () {
-      return {
-        events: [], myRegs: [], isAdmin: false, search: '', loading: false, unregId: null
+  // === ES6 Class Component (React 17 compatible) ===
+  class App extends React.Component {
+    constructor(props) {
+      super(props);
+      this.state = {
+        events: [],
+        myRegs: [],
+        isAdmin: false,
+        search: '',
+        loading: false,
+        unregId: null
       };
-    },
 
-    componentDidMount: function () {
+      // Bind methods
+      this.handleSearch = this.handleSearch.bind(this);
+      this.register = this.register.bind(this);
+      this.showUnreg = this.showUnreg.bind(this);
+      this.unregister = this.unregister.bind(this);
+    }
+
+    componentDidMount() {
       this.site = _spPageContextInfo.webAbsoluteUrl;
       this.userEmail = _spPageContextInfo.userLoginName;
       this.digest = $("#__REQUESTDIGEST").val();
 
-      $('#searchBox').on('input', e => this.setState({ search: e.target.value.toLowerCase() }));
+      $('#searchBox').on('input', this.handleSearch);
       this.checkAdmin(() => {
         this.loadEvents();
         this.loadMyRegs();
       });
-    },
+    }
 
-    checkAdmin: function (cb) {
+    checkAdmin(cb) {
       $.ajax({
         url: this.site + "/_api/web/currentuser/groups?$filter=Title eq 'Event Managers'",
         headers: { Accept: "application/json; odata=verbose" },
@@ -31,17 +42,21 @@ $(document).ready(function () {
           cb();
         }
       });
-    },
+    }
 
-    renderAdminLinks: function () {
-      const links = h("div", null,
-        h("a", { href: "AdminDashboard.aspx", className: "btn btn-warning btn-block mb-2" }, "Admin Dashboard"),
-        h("a", { href: "Survey.aspx", className: "btn btn-info btn-block" }, "Design Survey")
+    renderAdminLinks() {
+      const links = React.createElement("div", null,
+        React.createElement("a", { href: "AdminDashboard.aspx", className: "btn btn-warning btn-block mb-2" }, "Admin Dashboard"),
+        React.createElement("a", { href: "Survey.aspx", className: "btn btn-info btn-block" }, "Design Survey")
       );
       ReactDOM.render(links, document.getElementById("adminLinks"));
-    },
+    }
 
-    loadEvents: function () {
+    handleSearch(e) {
+      this.setState({ search: e.target.value.toLowerCase() });
+    }
+
+    loadEvents() {
       this.setState({ loading: true });
       $("#loading").show();
 
@@ -61,17 +76,17 @@ $(document).ready(function () {
             });
         }
       });
-    },
+    }
 
-    loadMyRegs: function () {
+    loadMyRegs() {
       $.ajax({
         url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=UserEmail eq '" + this.userEmail + "'&$select=EventLookupId,Status,WaitlistPosition",
         headers: { Accept: "application/json; odata=verbose" },
         success: d => this.setState({ myRegs: d.d.results })
       });
-    },
+    }
 
-    getRegCount: function (id) {
+    getRegCount(id) {
       return new Promise(r => {
         $.ajax({
           url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and Status eq 'Confirmed'",
@@ -80,10 +95,10 @@ $(document).ready(function () {
           error: () => r(0)
         });
       });
-    },
+    }
 
     // === WAITLIST REGISTRATION ===
-    register: function (id) {
+    register(id) {
       this.setState({ loading: true });
       const event = this.state.events.find(e => e.Id === id);
       if (!event.AllowRegistration) return alert("Registration closed");
@@ -92,10 +107,8 @@ $(document).ready(function () {
         const isFull = event.MaxSeats && count >= event.MaxSeats;
 
         if (!isFull) {
-          // CONFIRMED
           this.createRegistration(id, 'Confirmed', null);
         } else {
-          // WAITLISTED
           this.getNextWaitlistPosition(id).then(pos => {
             if (window.confirm(`Event is full. Join waitlist at position ${pos}?`)) {
               this.createRegistration(id, 'Waitlisted', pos);
@@ -105,9 +118,9 @@ $(document).ready(function () {
           });
         }
       });
-    },
+    }
 
-    createRegistration: function (eventId, status, position) {
+    createRegistration(eventId, status, position) {
       $.ajax({
         url: this.site + "/_api/web/lists/getbytitle('Registrations')/items",
         type: "POST",
@@ -126,13 +139,17 @@ $(document).ready(function () {
         success: () => {
           const msg = status === 'Confirmed' ? 'Registered!' : `Waitlisted at #${position}!`;
           alert(msg + " Confirmation email sent.");
-          this.loadEvents(); this.loadMyRegs();
+          this.loadEvents();
+          this.loadMyRegs();
         },
-        error: e => { alert("Error: " + e.responseText); this.setState({ loading: false }); }
+        error: e => {
+          alert("Error: " + e.responseText);
+          this.setState({ loading: false });
+        }
       });
-    },
+    }
 
-    getNextWaitlistPosition: function (eventId) {
+    getNextWaitlistPosition(eventId) {
       return new Promise(r => {
         $.ajax({
           url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + eventId + " and Status eq 'Waitlisted'&$orderby=WaitlistPosition desc&$top=1&$select=WaitlistPosition",
@@ -141,10 +158,14 @@ $(document).ready(function () {
           error: () => r(1)
         });
       });
-    },
+    }
 
-    // === AUTO-PROMOTE ON CANCEL ===
-    unregister: function () {
+    showUnreg(id) {
+      this.setState({ unregId: id });
+      $("#unregModal").modal("show");
+    }
+
+    unregister() {
       const id = this.state.unregId;
       $("#unregModal").modal("hide");
 
@@ -160,19 +181,19 @@ $(document).ready(function () {
               headers: { "X-RequestDigest": this.digest, "If-Match": "*", "X-HTTP-Method": "DELETE" },
               success: () => {
                 alert("Unregistered");
-                this.loadEvents(); this.loadMyRegs();
-                this.autoPromoteWaitlist(id); // <<< AUTO-PROMOTE
+                this.loadEvents();
+                this.loadMyRegs();
+                this.autoPromoteWaitlist(id);
               }
             });
           }
         }
       });
-    },
+    }
 
-    autoPromoteWaitlist: function (eventId) {
-      // Get first waitlisted user
+    autoPromoteWaitlist(eventId) {
       $.ajax({
-        url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + eventId + " and Status eq 'Waitlisted'&$orderby=WaitlistPosition asc&$top=1&$select=Id,UserEmail,WaitlistPosition",
+        url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + eventId + " and Status eq 'Waitlisted'&$orderby=WaitlistPosition asc&$top=1&$select=Id,UserEmail",
         headers: { Accept: "application/json; odata=verbose" },
         success: d => {
           if (d.d.results.length) {
@@ -182,18 +203,37 @@ $(document).ready(function () {
               type: "POST",
               data: JSON.stringify({ '__metadata': { type: 'SP.Data.RegistrationsListItem' }, Status: 'Confirmed' }),
               headers: { "X-RequestDigest": this.digest, "If-Match": "*", "X-HTTP-Method": "MERGE" },
-              success: () => {
-                // Send promotion email via workflow (triggered by update)
-                console.log("Promoted: " + reg.UserEmail);
-              }
+              success: () => console.log("Promoted:", reg.UserEmail)
             });
           }
         }
       });
-    },
+    }
 
-    // === UI: CARDS WITH WAITLIST STATUS ===
-    renderCards: function (events) {
+    renderCalendar(events) {
+      const calEvents = events.map(e => ({
+        title: e.Title + (e.MaxSeats ? ` (${e.regCount}/${e.MaxSeats})` : ''),
+        start: e.StartTime,
+        end: e.EndTime,
+        id: e.Id,
+        color: e.IsOver ? '#999' : (e.regCount >= e.MaxSeats ? '#d9534f' : '#5cb85c')
+      }));
+
+      $('#calendar').fullCalendar('destroy');
+      $('#calendar').fullCalendar({
+        header: { left: 'prev,next today', center: 'title', right: 'month,agendaWeek,agendaDay' },
+        events: calEvents,
+        eventClick: e => this.showEventDetails(e.id)
+      });
+    }
+
+    showEventDetails(id) {
+      const ev = this.state.events.find(e => e.Id === id);
+      if (!ev) return;
+      alert(`${ev.Title}\n${new Date(ev.StartTime).toLocaleString()} - ${new Date(ev.EndTime).toLocaleString()}\nRoom: ${ev.Room}\nSeats: ${ev.regCount}/${ev.MaxSeats || '∞'}`);
+    }
+
+    renderCards(events) {
       const filtered = events.filter(e =>
         e.Title.toLowerCase().includes(this.state.search) ||
         (e.Room && e.Room.toLowerCase().includes(this.state.search))
@@ -209,55 +249,57 @@ $(document).ready(function () {
 
         let btn;
         if (!canReg) {
-          btn = h("button", { className: "btn btn-default btn-sm disabled" }, isFull ? "Full" : "Closed");
+          btn = React.createElement("button", { className: "btn btn-default btn-sm disabled" }, isFull ? "Full" : "Closed");
         } else if (myReg) {
           if (myReg.Status === 'Confirmed') {
-            btn = h("button", { className: "btn btn-success btn-sm disabled" }, "Registered");
+            btn = React.createElement("button", { className: "btn btn-success btn-sm disabled" }, "Registered");
           } else if (myReg.Status === 'Waitlisted') {
-            btn = h("button", { className: "btn btn-warning btn-sm disabled" }, `Waitlist #${myReg.WaitlistPosition}`);
+            btn = React.createElement("button", { className: "btn btn-warning btn-sm disabled" }, `Waitlist #${myReg.WaitlistPosition}`);
           }
-          btn = h("div", null, btn,
-            h("button", { className: "btn btn-danger btn-sm", onClick: () => this.showUnreg(ev.Id) }, "Cancel")
+          btn = React.createElement("div", null, btn,
+            React.createElement("button", { className: "btn btn-danger btn-sm", onClick: () => this.showUnreg(ev.Id) }, "Cancel")
           );
         } else {
-          btn = h("button", { className: "btn btn-success btn-sm", onClick: () => this.register(ev.Id) },
+          btn = React.createElement("button", { className: "btn btn-success btn-sm", onClick: () => this.register(ev.Id) },
             isFull ? "Join Waitlist" : "Register"
           );
         }
 
         const attachments = ev.Attachments
-          ? h("a", { href: this.site + "/_api/web/lists/getbytitle('Events')/items(" + ev.Id + ")/AttachmentFiles", target: "_blank", className: "btn btn-link btn-xs" }, "Resources")
+          ? React.createElement("a", { href: this.site + "/_api/web/lists/getbytitle('Events')/items(" + ev.Id + ")/AttachmentFiles", target: "_blank", className: "btn btn-link btn-xs" }, "Resources")
           : null;
 
-        return h("div", { key: ev.Id, className: "col-md-6 mb-3" },
-          h("div", { className: panelCls },
-            h("div", { className: "panel-heading" }, ev.Title),
-            h("div", { className: "panel-body" },
-              h("p", null, "Time: ", new Date(ev.StartTime).toLocaleString(), " – ", new Date(ev.EndTime).toLocaleString()),
-              h("p", null, "Room: ", ev.Room || "TBD"),
-              h("p", null, "Instructor: ", ev.Instructor ? ev.Instructor.Title : "TBD"),
-              h("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited"),
-              myReg && myReg.Status === 'Waitlisted' ? h("p", { className: "text-warning" }, "Waitlist Position: #", myReg.WaitlistPosition) : null,
+        return React.createElement("div", { key: ev.Id, className: "col-md-6 mb-3" },
+          React.createElement("div", { className: panelCls },
+            React.createElement("div", { className: "panel-heading" }, ev.Title),
+            React.createElement("div", { className: "panel-body" },
+              React.createElement("p", null, "Time: ", new Date(ev.StartTime).toLocaleString(), " – ", new Date(ev.EndTime).toLocaleString()),
+              React.createElement("p", null, "Room: ", ev.Room || "TBD"),
+              React.createElement("p", null, "Instructor: ", ev.Instructor ? ev.Instructor.Title : "TBD"),
+              React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited"),
+              myReg && myReg.Status === 'Waitlisted' ? React.createElement("p", { className: "text-warning" }, "Waitlist Position: #", myReg.WaitlistPosition) : null,
               attachments
             ),
-            h("div", { className: "panel-footer text-right" }, btn)
+            React.createElement("div", { className: "panel-footer text-right" }, btn)
           )
         );
       });
 
-      ReactDOM.render(h("div", null, cards), document.getElementById("root"));
-    },
+      ReactDOM.render(React.createElement("div", null, cards), document.getElementById("root"));
+    }
 
-    // FullCalendar, showUnreg, etc. (unchanged)
-    showUnreg: function (id) { this.setState({ unregId: id }); $("#unregModal").modal("show"); },
-    renderCalendar: function (events) { /* same as before */ }
-  });
+    render() {
+      return null; // We render manually via renderCards() and renderCalendar()
+    }
+  }
 
+  // === MODAL CONFIRM ===
   $(document).on('click', '#confirmUnreg', function () {
     window.reactApp && window.reactApp.unregister();
   });
 
-  const root = React.createElement(App);
-  ReactDOM.render(root, document.getElementById("root"));
-  window.reactApp = root;
+  // === RENDER APP ===
+  const app = React.createElement(App);
+  ReactDOM.render(app, document.getElementById("root"));
+  window.reactApp = app;
 });
