@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <title>Event Dashboard</title>
 
-  <!-- 1. jQuery 3.4.1 (ONLY ONCE) -->
+  <!-- 1. Load jQuery 3.4.1 -->
   <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
 
   <!-- 2. Bootstrap -->
@@ -33,7 +33,6 @@
 <body>
 
 <div class="container-fluid">
-
   <!-- LEFT NAV -->
   <div class="col-md-3">
     <div class="panel panel-primary">
@@ -55,7 +54,6 @@
       <p>Loading events...</p>
     </div>
 
-    <!-- TABS -->
     <ul class="nav nav-tabs" role="tablist">
       <li role="presentation" class="active"><a href="#calendar" data-toggle="tab">Calendar</a></li>
       <li role="presentation"><a href="#cards" data-toggle="tab">List View</a></li>
@@ -70,7 +68,6 @@
       </div>
     </div>
   </div>
-
 </div>
 
 <!-- MODAL -->
@@ -90,10 +87,8 @@
   </div>
 </div>
 
-<!-- FULLCALENDAR JS (AFTER jQuery) -->
+<!-- FULLCALENDAR + APP (SAFE SCOPE) -->
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@3.10.2/dist/fullcalendar.min.js"></script>
-
-<!-- YOUR APP (LAST) -->
 <script src="/SiteAssets/eventsApp.js"></script>
 
 </body>
