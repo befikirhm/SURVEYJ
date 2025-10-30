@@ -1,29 +1,23 @@
 (function () {
-    // Safety: Only override if field exists
-    var overrideContext = {};
-    overrideContext.Templates = {};
-    overrideContext.Templates.Fields = {};
+    // Only run if SharePoint client templates are loaded
+    if (typeof SPClientTemplates === 'undefined') return;
 
-    // === REPLACE 'YourNumberColumn' with your actual Internal Field Name ===
-    overrideContext.Templates.Fields["YourNumberColumn"] = {
-        "DisplayForm": removeCommasFromField
-    };
+    var ctx = {};
+    ctx.Templates = {};
+    ctx.Templates.Fields = {};
 
-    // Register only if SPClientTemplates exists
-    if (typeof SPClientTemplates !== 'undefined') {
-        SPClientTemplates.TemplateManager.RegisterTemplateOverrides(overrideContext);
-    }
+    // === CHANGE THIS TO YOUR INTERNAL COLUMN NAME ===
+    ctx.Templates.Fields["Budget"] = { "DisplayForm": removeCommas };
+
+    SPClientTemplates.TemplateManager.RegisterTemplateOverrides(ctx);
 })();
 
-function removeCommasFromField(ctx) {
-    if (!ctx || !ctx.CurrentItem) return "";
+function removeCommas(fieldCtx) {
+    if (!fieldCtx || !fieldCtx.CurrentItem) return "";
 
-    var fieldName = ctx.CurrentFieldSchema.Name;
-    var value = ctx.CurrentItem[fieldName];
-
-    // Return empty if no value
+    var value = fieldCtx.CurrentItem[fieldCtx.CurrentFieldSchema.Name];
     if (!value) return "";
 
-    // Remove commas (thousands separators)
+    // Remove commas and return clean number
     return value.replace(/,/g, '');
 }
