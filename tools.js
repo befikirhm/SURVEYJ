@@ -43,3 +43,22 @@ $(document).ready(function () {
     });
 });
 </script>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+$(document).ready(function () {
+    // Target every <td> that contains a field value (skip labels)
+    $('table.ms-formtable td').not('.ms-formlabel').each(function () {
+        var $cell = $(this);
+        var originalText = $cell.text().trim();
+
+        // REGEX: Matches numbers like 1,234,567 | 1234 | 1,234.56 | -1,234
+        var numberWithCommas = /^-?\d{1,3}(,\d{3})*(\.\d+)?$/;
+
+        if (numberWithCommas.test(originalText)) {
+            var cleanNumber = originalText.replace(/,/g, '');
+            $cell.text(cleanNumber);
+        }
+    });
+});
+</script>
