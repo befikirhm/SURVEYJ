@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED createReg ===
+// === SP 2016 ON-PREM – FIXED REGISTER BUTTON & DUPLICATE ERROR ===
 (function () {
   'use strict';
 
@@ -214,8 +214,14 @@
           $.ajax({
             url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=UserEmail eq '" + encodeURIComponent(this.userEmail) + "'&$select=EventLookupId,Status,WaitlistPosition,EventTitle,RegistrationDate",
             headers: { Accept: "application/json; odata=verbose" },
-            success: d => this.setState({ myRegs: d.d?.results || [] }),
-            error: () => console.log("My regs failed")
+            success: d => {
+              console.log("My registrations loaded:", d.d?.results?.length || 0);
+              this.setState({ myRegs: d.d?.results || [] }, () => this.renderCards());
+            },
+            error: () => {
+              console.log("My regs failed");
+              this.setState({ myRegs: [] }, () => this.renderCards());
+            }
           });
         }
 
@@ -234,6 +240,13 @@
           const ev = this.state.events.find(e => e.Id === id);
           if (!ev || !ev.AllowRegistration) return alert("Registration closed");
 
+          // Check if already registered
+          const myReg = this.state.myRegs.find(r => r.EventLookupId === ev.Id);
+          if (myReg) {
+            alert("You are already " + (myReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${myReg.WaitlistPosition})`));
+            return;
+          }
+
           this.getRegCount(id).then(count => {
             const full = ev.MaxSeats && count >= ev.MaxSeats;
             if (!full) this.createReg(id, 'Confirmed', null, ev.Title);
@@ -244,18 +257,18 @@
         }
 
         createReg(id, status, pos, eventTitle) {
-          const registrationDate = new Date().toISOString(); // Current date/time in ISO format
+          const registrationDate = new Date().toISOString();
           $.ajax({
             url: this.site + "/_api/web/lists/getbytitle('Registrations')/items",
             type: "POST",
             data: JSON.stringify({
               '__metadata': { type: 'SP.Data.RegistrationsListItem' },
-              EventLookupId: { Id: id }, // Lookup field format
-              UserEmail: this.userEmail, // Fixed: Ensure userEmail is set
+              EventLookupId: { Id: id },
+              UserEmail: this.userEmail,
               Status: status,
               WaitlistPosition: pos,
-              EventTitle: eventTitle, // New: Event Title
-              RegistrationDate: registrationDate // New: Current date/time
+              EventTitle: eventTitle,
+              RegistrationDate: registrationDate
             }),
             headers: {
               Accept: "application/json; odata=verbose",
@@ -263,7 +276,7 @@
               "Content-Type": "application/json; odata=verbose"
             },
             success: () => {
-              console.log("Registration created:", { id, userEmail: this.userEmail, eventTitle, registrationDate });
+              console.log("Registration created:", { id, userEmail: this.userEmail, eventTitle, registrationDate, status });
               alert(status === 'Confirmed' ? 'Registered!' : `Waitlist #${pos}`);
               this.loadEvents();
               this.loadMyRegs();
@@ -327,7 +340,7 @@
           );
 
           const cards = filtered.length ? filtered.map(ev => {
-            const myReg = this.state.myRegs.find(r => r.EventLookupId === ev.Id);
+            const myReg = this.state.myRegs.find(r => r.EventLookupId === ev.Id); // Fixed: Direct ID comparison
             const isFull = ev.MaxSeats && ev.regCount >= ev.MaxSeats;
             const isPast = new Date(ev.EndTime) < new Date();
             const canReg = ev.AllowRegistration && !isPast;
