@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED DUPLICATE REGISTRATION + EVENTLOOKUP EXPANSION ===
+// === SP 2016 ON-PREM – FIXED MY REGISTRATIONS + TITLE + NO EVENTLOOKUP EXPANSION ===
 (function () {
   'use strict';
 
@@ -124,6 +124,7 @@
           this.register = this.register.bind(this);
           this.showUnreg = this.showUnreg.bind(this);
           this.unregister = this.unregister.bind(this);
+          this.refreshMyRegs = this.refreshMyRegs.bind(this);
         }
 
         componentDidMount() {
@@ -260,26 +261,51 @@
           console.log(`[${timestamp}] [loadMyRegs] Loading user registrations for:`, this.userEmail);
 
           return new Promise(resolve => {
+            const query = this.site + "/_api/web/lists/getbytitle('Registrations')/items" +
+                          "?$filter=UserEmail eq '" + encodeURIComponent(this.userEmail) + "'" +
+                          "&$select=Id,EventLookupId,Status,WaitlistPosition,Title,RegistrationDate";
+            console.log(`[${timestamp}] [loadMyRegs] Query URL:`, query);
+
             $.ajax({
-              url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=UserEmail eq '" + encodeURIComponent(this.userEmail) + "'&$select=Id,EventLookupId,Status,WaitlistPosition,EventTitle,RegistrationDate,EventLookup/Id,EventLookup/Title&$expand=EventLookup",
+              url: query,
               headers: { Accept: "application/json; odata=verbose" },
+              timeout: 10000,
               success: d => {
-                const registrations = (d.d?.results || []).map(r => ({
-                  Id: r.Id,
-                  EventLookupId: r.EventLookup?.Id || r.EventLookupId,
-                  EventTitle: r.EventLookup?.Title || r.EventTitle,
-                  Status: r.Status,
-                  WaitlistPosition: r.WaitlistPosition,
-                  RegistrationDate: r.RegistrationDate
-                }));
-                console.log(`[${timestamp}] [loadMyRegs] My registrations loaded:`, registrations.length, registrations);
-                this.setState({ myRegs: registrations }, () => {
-                  this.renderCards();
-                  resolve(true);
-                });
+                try {
+                  const registrations = (d.d?.results || []).map(r => {
+                    if (!r.EventLookupId) {
+                      console.warn(`[${timestamp}] [loadMyRegs] Missing EventLookupId for registration:`, r);
+                    }
+                    return {
+                      Id: r.Id,
+                      EventLookupId: r.EventLookupId,
+                      Title: r.Title || "Unknown",
+                      Status: r.Status,
+                      WaitlistPosition: r.WaitlistPosition,
+                      RegistrationDate: r.RegistrationDate
+                    };
+                  });
+                  console.log(`[${timestamp}] [loadMyRegs] My registrations loaded:`, registrations.length, registrations);
+                  this.setState({ myRegs: registrations }, () => {
+                    this.renderCards();
+                    resolve(true);
+                  });
+                } catch (e) {
+                  console.error(`[${timestamp}] [loadMyRegs] Error parsing registrations:`, e);
+                  handleError("Parse Registrations", e, "Failed to parse user registrations.");
+                  this.setState({ myRegs: [] }, () => {
+                    this.renderCards();
+                    resolve(false);
+                  });
+                }
               },
               error: xhr => {
-                console.warn(`[${timestamp}] [loadMyRegs] Failed to load registrations:`, xhr);
+                console.error(`[${timestamp}] [loadMyRegs] Failed to load registrations:`, {
+                  status: xhr.status,
+                  statusText: xhr.statusText,
+                  response: xhr.responseJSON || xhr.responseText
+                });
+                handleError("Load My Registrations", xhr, "Failed to load your registrations. Please check permissions or list settings.");
                 this.setState({ myRegs: [] }, () => {
                   this.renderCards();
                   resolve(false);
@@ -287,6 +313,12 @@
               }
             });
           });
+        }
+
+        refreshMyRegs() {
+          const timestamp = new Date().toISOString();
+          console.log(`[${timestamp}] [refreshMyRegs] Manually refreshing registrations...`);
+          this.loadMyRegs();
         }
 
         getRegCount(id) {
@@ -314,9 +346,15 @@
           console.log(`[${timestamp}] [checkExistingRegistration] Checking registration for Event ID:`, id, "User:", this.userEmail);
 
           return new Promise(resolve => {
+            const query = this.site + "/_api/web/lists/getbytitle('Registrations')/items" +
+                          "?$filter=EventLookupId eq " + id + " and UserEmail eq '" + encodeURIComponent(this.userEmail) + "'" +
+                          "&$select=Id,Status,WaitlistPosition,Title";
+            console.log(`[${timestamp}] [checkExistingRegistration] Query URL:`, query);
+
             $.ajax({
-              url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and UserEmail eq '" + encodeURIComponent(this.userEmail) + "'&$select=Id,Status,WaitlistPosition,EventLookup/Id,EventLookup/Title&$expand=EventLookup",
+              url: query,
               headers: { Accept: "application/json; odata=verbose" },
+              timeout: 5000,
               success: d => {
                 const reg = d.d?.results?.[0];
                 console.log(`[${timestamp}] [checkExistingRegistration] Result for Event ID ${id}:`, reg || "None");
@@ -390,7 +428,7 @@
           });
         }
 
-        createReg(id, status, pos, eventTitle, retryCount = 0) {
+        createReg(id, status, pos, title, retryCount = 0) {
           const maxRetries = 2;
           const timestamp = new Date().toISOString();
           const registrationDate = new Date().toISOString();
@@ -398,7 +436,7 @@
             userEmail: this.userEmail,
             status,
             waitlistPosition: pos,
-            eventTitle,
+            title,
             registrationDate,
             retryCount
           });
@@ -408,11 +446,11 @@
             type: "POST",
             data: JSON.stringify({
               '__metadata': { type: 'SP.Data.RegistrationsListItem' },
-              EventLookupId: { Id: id },
+              EventLookupId: id,
               UserEmail: this.userEmail,
               Status: status,
               WaitlistPosition: pos,
-              EventTitle: eventTitle,
+              Title: title,
               RegistrationDate: registrationDate
             }),
             headers: {
@@ -439,7 +477,7 @@
                       alert("You are already " + (existingReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${existingReg.WaitlistPosition})`));
                     } else {
                       console.log(`[${timestamp}] [createReg] No existing registration on retry. Attempting again...`);
-                      this.createReg(id, status, pos, eventTitle, retryCount + 1);
+                      this.createReg(id, status, pos, title, retryCount + 1);
                     }
                   });
                 });
@@ -561,8 +599,11 @@
                 React.createElement("button", { className: "btn btn-danger btn-sm", onClick: () => this.showUnreg(ev.Id) }, "Cancel")
               );
             } else {
-              btn = React.createElement("button", { className: "btn btn-success btn-sm", onClick: () => this.register(ev.Id) },
-                isFull ? "Join Waitlist" : "Register"
+              btn = React.createElement("div", null,
+                React.createElement("button", { className: "btn btn-success btn-sm", onClick: () => this.register(ev.Id) },
+                  isFull ? "Join Waitlist" : "Register"
+                ),
+                React.createElement("button", { className: "btn btn-info btn-sm", onClick: () => this.refreshMyRegs() }, "Refresh")
               );
             }
 
