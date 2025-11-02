@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED MY REGISTRATIONS + TITLE + NO EVENTLOOKUP EXPANSION ===
+// === SP 2016 ON-PREM – FIXED MY REGISTRATIONS + TITLE + EVENTLOOKUPID EXPANSION ===
 (function () {
   'use strict';
 
@@ -131,7 +131,9 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [componentDidMount] Initializing component...`);
           this.site = ctx.site;
-          this.userEmail = ctx.userEmail;
+          this.userEmail = ctx
+
+.userEmail;
           this.digest = ctx.digest;
 
           $('#searchBox').on('input', this.handleSearch);
@@ -263,7 +265,8 @@
           return new Promise(resolve => {
             const query = this.site + "/_api/web/lists/getbytitle('Registrations')/items" +
                           "?$filter=UserEmail eq '" + encodeURIComponent(this.userEmail) + "'" +
-                          "&$select=Id,EventLookupId,Status,WaitlistPosition,Title,RegistrationDate";
+                          "&$select=Id,EventLookupId,Status,WaitlistPosition,Title,RegistrationDate,EventLookupId/Id" +
+                          "&$expand=EventLookupId";
             console.log(`[${timestamp}] [loadMyRegs] Query URL:`, query);
 
             $.ajax({
@@ -273,12 +276,13 @@
               success: d => {
                 try {
                   const registrations = (d.d?.results || []).map(r => {
-                    if (!r.EventLookupId) {
+                    const eventLookupId = r.EventLookupId?.Id || r.EventLookupId;
+                    if (!eventLookupId) {
                       console.warn(`[${timestamp}] [loadMyRegs] Missing EventLookupId for registration:`, r);
                     }
                     return {
                       Id: r.Id,
-                      EventLookupId: r.EventLookupId,
+                      EventLookupId: eventLookupId,
                       Title: r.Title || "Unknown",
                       Status: r.Status,
                       WaitlistPosition: r.WaitlistPosition,
@@ -348,7 +352,7 @@
           return new Promise(resolve => {
             const query = this.site + "/_api/web/lists/getbytitle('Registrations')/items" +
                           "?$filter=EventLookupId eq " + id + " and UserEmail eq '" + encodeURIComponent(this.userEmail) + "'" +
-                          "&$select=Id,Status,WaitlistPosition,Title";
+                          "&$select=Id,Status,WaitlistPosition,Title,EventLookupId/Id&$expand=EventLookupId";
             console.log(`[${timestamp}] [checkExistingRegistration] Query URL:`, query);
 
             $.ajax({
