@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – DETAILED ERROR LOGGING ===
+// === SP 2016 ON-PREM – FIXED DUPLICATE REGISTRATION + EVENTLOOKUP EXPANSION ===
 (function () {
   'use strict';
 
@@ -259,17 +259,33 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [loadMyRegs] Loading user registrations for:`, this.userEmail);
 
-          $.ajax({
-            url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=UserEmail eq '" + encodeURIComponent(this.userEmail) + "'&$select=EventLookupId,Status,WaitlistPosition,EventTitle,RegistrationDate",
-            headers: { Accept: "application/json; odata=verbose" },
-            success: d => {
-              console.log(`[${timestamp}] [loadMyRegs] My registrations loaded:`, d.d?.results?.length || 0, d.d?.results);
-              this.setState({ myRegs: d.d?.results || [] }, () => this.renderCards());
-            },
-            error: xhr => {
-              console.warn(`[${timestamp}] [loadMyRegs] Failed to load registrations:`, xhr);
-              this.setState({ myRegs: [] }, () => this.renderCards());
-            }
+          return new Promise(resolve => {
+            $.ajax({
+              url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=UserEmail eq '" + encodeURIComponent(this.userEmail) + "'&$select=Id,EventLookupId,Status,WaitlistPosition,EventTitle,RegistrationDate,EventLookup/Id,EventLookup/Title&$expand=EventLookup",
+              headers: { Accept: "application/json; odata=verbose" },
+              success: d => {
+                const registrations = (d.d?.results || []).map(r => ({
+                  Id: r.Id,
+                  EventLookupId: r.EventLookup?.Id || r.EventLookupId,
+                  EventTitle: r.EventLookup?.Title || r.EventTitle,
+                  Status: r.Status,
+                  WaitlistPosition: r.WaitlistPosition,
+                  RegistrationDate: r.RegistrationDate
+                }));
+                console.log(`[${timestamp}] [loadMyRegs] My registrations loaded:`, registrations.length, registrations);
+                this.setState({ myRegs: registrations }, () => {
+                  this.renderCards();
+                  resolve(true);
+                });
+              },
+              error: xhr => {
+                console.warn(`[${timestamp}] [loadMyRegs] Failed to load registrations:`, xhr);
+                this.setState({ myRegs: [] }, () => {
+                  this.renderCards();
+                  resolve(false);
+                });
+              }
+            });
           });
         }
 
@@ -299,7 +315,7 @@
 
           return new Promise(resolve => {
             $.ajax({
-              url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and UserEmail eq '" + encodeURIComponent(this.userEmail) + "'&$select=Id,Status,WaitlistPosition",
+              url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and UserEmail eq '" + encodeURIComponent(this.userEmail) + "'&$select=Id,Status,WaitlistPosition,EventLookup/Id,EventLookup/Title&$expand=EventLookup",
               headers: { Accept: "application/json; odata=verbose" },
               success: d => {
                 const reg = d.d?.results?.[0];
@@ -318,6 +334,13 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [register] Attempting registration for Event ID:`, id);
 
+          // Validate Event ID
+          if (!Number.isInteger(id) || id <= 0) {
+            console.error(`[${timestamp}] [register] Invalid Event ID:`, id);
+            alert("Invalid event ID.");
+            return;
+          }
+
           const ev = this.state.events.find(e => e.Id === id);
           if (!ev || !ev.AllowRegistration) {
             console.warn(`[${timestamp}] [register] Registration closed for Event ID:`, id);
@@ -325,11 +348,23 @@
             return;
           }
 
-          // Direct REST check for existing registration
-          console.log(`[${timestamp}] [register] Checking existing registration...`);
+          // Force refresh myRegs
+          console.log(`[${timestamp}] [register] Refreshing my registrations...`);
+          await this.loadMyRegs();
+
+          // Check local state
+          const localReg = this.state.myRegs.find(r => r.EventLookupId === ev.Id);
+          if (localReg) {
+            console.log(`[${timestamp}] [register] Found in local state for Event ID ${id}:`, localReg);
+            alert("You are already " + (localReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${localReg.WaitlistPosition})`));
+            return;
+          }
+
+          // Double-check with REST
+          console.log(`[${timestamp}] [register] Double-checking via REST...`);
           const existingReg = await this.checkExistingRegistration(id);
           if (existingReg) {
-            console.log(`[${timestamp}] [register] Already registered for Event ID ${id}:`, existingReg);
+            console.log(`[${timestamp}] [register] Already registered via REST for Event ID ${id}:`, existingReg);
             alert("You are already " + (existingReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${existingReg.WaitlistPosition})`));
             return;
           }
@@ -343,7 +378,7 @@
               this.createReg(id, 'Confirmed', null, ev.Title);
             } else {
               this.getNextWaitlistPosition(id).then(pos => {
-                console.log(`[${timestamp}] [register] Event full. Offering waitress position:`, pos);
+                console.log(`[${timestamp}] [register] Event full. Offering waitlist position:`, pos);
                 if (confirm(`Event full. Join waitlist #${pos}?`)) {
                   console.log(`[${timestamp}] [register] Creating waitlist registration...`);
                   this.createReg(id, 'Waitlisted', pos, ev.Title);
@@ -355,7 +390,8 @@
           });
         }
 
-        createReg(id, status, pos, eventTitle) {
+        createReg(id, status, pos, eventTitle, retryCount = 0) {
+          const maxRetries = 2;
           const timestamp = new Date().toISOString();
           const registrationDate = new Date().toISOString();
           console.log(`[${timestamp}] [createReg] Creating registration for Event ID:`, id, {
@@ -363,7 +399,8 @@
             status,
             waitlistPosition: pos,
             eventTitle,
-            registrationDate
+            registrationDate,
+            retryCount
           });
 
           $.ajax({
@@ -390,7 +427,25 @@
               this.loadMyRegs();
             },
             error: xhr => {
-              handleError("Create Registration", xhr, "Failed to register for event.");
+              const msg = xhr.responseJSON?.error?.message?.value || "Registration failed";
+              console.error(`[${timestamp}] [createReg] Error for Event ID ${id}:`, msg);
+
+              if (msg.includes("A list item with ID") && retryCount < maxRetries) {
+                console.log(`[${timestamp}] [createReg] Duplicate error detected. Retrying (${retryCount + 1}/${maxRetries})...`);
+                this.loadMyRegs().then(() => {
+                  this.checkExistingRegistration(id).then(existingReg => {
+                    if (existingReg) {
+                      console.log(`[${timestamp}] [createReg] Confirmed existing registration on retry:`, existingReg);
+                      alert("You are already " + (existingReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${existingReg.WaitlistPosition})`));
+                    } else {
+                      console.log(`[${timestamp}] [createReg] No existing registration on retry. Attempting again...`);
+                      this.createReg(id, status, pos, eventTitle, retryCount + 1);
+                    }
+                  });
+                });
+              } else {
+                handleError("Create Registration", xhr, `Failed to register: ${msg}`);
+              }
             }
           });
         }
