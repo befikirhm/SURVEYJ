@@ -97,14 +97,14 @@
       console.log(`[${timestamp}] [API loadMyRegs] Loading for ${userEmail}`);
       if (!userEmail) {
         console.error(`[${timestamp}] [API loadMyRegs] No user email provided`);
-        return Promise.resolve({ error: true, message: "User email not available" });
+        return Promise.resolve({ error: true, message: "User email not available. Check SharePoint context." });
       }
       const q = "?$select=Id,EventLookupId,Status,WaitlistPosition,EventTitle&$filter=Registrant eq '" + userEmail + "'";
       const url = site + "/_api/web/lists/getbytitle('Registrations')/items" + q;
       return $.ajax({
         url,
         headers: { Accept: "application/json; odata=verbose" },
-        timeout: 30000 // Increased timeout
+        timeout: 30000
       }).then(d => {
         console.log(`[${timestamp}] [API loadMyRegs] Raw response:`, d);
         const regs = (d.d?.results || []).map((r, index) => {
@@ -125,7 +125,7 @@
         if (xhr.status === 404) msg = "List 'Registrations' not found. Please ensure the list exists.";
         if (xhr.status === 403) msg = "Access denied to Registrations list. Check user permissions.";
         if (xhr.status === 0) msg = "Network error or request timeout while loading Registrations.";
-        return { error: true, message: msg, status: xhr.status };
+        return { error: true, message: msg, status: xhr.status, responseText: xhr.responseText };
       });
     },
 
@@ -296,6 +296,7 @@
         timeout: 15000
       }).then(() => ({ success: true, message: 'Response saved successfully!' })).catch(xhr => {
         const msg = xhr.responseJSON?.error?.message?.value || "Failed to save response";
+        console.error(`[${timestamp}] [API saveSurveyResponse] Error:`, xhr);
         return { success: false, message: msg };
       });
     },
@@ -324,6 +325,7 @@
         let msg = "Failed to load survey responses.";
         if (xhr.status === 404) msg = "List 'SurveyResponses' not found.";
         if (xhr.status === 403) msg = "Access denied to SurveyResponses list.";
+        console.error(`[${timestamp}] [API loadSurveyResponses] Error:`, xhr);
         return { error: true, message: msg };
       });
     }
@@ -496,6 +498,7 @@
       const [survey, setSurvey] = React.useState(null);
       const [isDesigner, setIsDesigner] = React.useState(true);
       const [creator, setCreator] = React.useState(null);
+      const [error, setError] = React.useState(null);
 
       React.useEffect(() => {
         if (showModal && events.length > 0) {
@@ -528,29 +531,77 @@
             }]
           };
 
-          const newSurvey = new Survey.Model(surveyJson);
-          newSurvey.onComplete.add((sender) => {
-            console.log(`[${timestamp}] [SurveyModal] Survey completed:`, sender.data);
-            const responseData = { ...sender.data, eventTitles };
-            api.saveSurveyResponse(site, digest, responseData).then(result => {
-              alert(result.message);
-              setShowModal(false);
+          try {
+            const newSurvey = new Survey.Model(surveyJson);
+            newSurvey.onComplete.add((sender) => {
+              console.log(`[${timestamp}] [SurveyModal] Survey completed:`, sender.data);
+              const responseData = { ...sender.data, eventTitles };
+              api.saveSurveyResponse(site, digest, responseData).then(result => {
+                alert(result.message);
+                setShowModal(false);
+              }).catch(err => {
+                console.error(`[${timestamp}] [SurveyModal] Failed to save response:`, err);
+                alert("Failed to save survey response.");
+              });
             });
-          });
-          setSurvey(newSurvey);
+            setSurvey(newSurvey);
 
-          if (isDesigner && typeof SurveyCreator !== 'undefined') {
-            const newCreator = new SurveyCreator.SurveyCreator({
-              showLogicTab: true,
-              showTranslationTab: true
-            });
-            newCreator.JSON = surveyJson;
-            setCreator(newCreator);
+            if (isDesigner) {
+              if (typeof SurveyCreator === 'undefined' || typeof SurveyCreatorReact === 'undefined') {
+                console.error(`[${timestamp}] [SurveyModal] SurveyCreator or SurveyCreatorReact not loaded`);
+                setError("Survey designer unavailable. Ensure survey-creator-react is loaded.");
+                return;
+              }
+              const newCreator = new SurveyCreator.SurveyCreator({
+                showLogicTab: true,
+                showTranslationTab: true
+              });
+              newCreator.JSON = surveyJson;
+              newCreator.saveSurveyFunc = (saveNo, callback) => {
+                console.log(`[${timestamp}] [SurveyModal] Saving survey JSON:`, newCreator.JSON);
+                callback(saveNo, true);
+              };
+              setCreator(newCreator);
+            }
+          } catch (e) {
+            console.error(`[${timestamp}] [SurveyModal] Initialization error:`, e);
+            setError("Failed to initialize survey: " + e.message);
           }
         }
       }, [showModal, events, site, digest, isDesigner]);
 
-      if (!showModal || !survey) return null;
+      if (!showModal || (!survey && !error)) return null;
+
+      if (error) {
+        return [
+          React.createElement("div", {
+            key: "modal-backdrop",
+            className: "modal-backdrop",
+            style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1040 },
+            onClick: () => setShowModal(false)
+          }),
+          React.createElement("div", {
+            key: "modal",
+            className: "modal",
+            style: { display: "block", position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1050, overflow: "auto" }
+          },
+            React.createElement("div", { className: "modal-dialog", style: { margin: "5% auto", maxWidth: "800px", width: "90%" } },
+              React.createElement("div", { className: "modal-content" },
+                React.createElement("div", { className: "modal-header" },
+                  React.createElement("h4", { className: "modal-title" }, "Error"),
+                  React.createElement("button", { className: "close", onClick: () => setShowModal(false) }, "×")
+                ),
+                React.createElement("div", { className: "modal-body" },
+                  React.createElement("div", { className: "alert alert-danger" }, error)
+                ),
+                React.createElement("div", { className: "modal-footer" },
+                  React.createElement("button", { className: "btn btn-default", onClick: () => setShowModal(false) }, "Close")
+                )
+              )
+            )
+          )
+        ];
+      }
 
       return [
         React.createElement("div", {
@@ -577,7 +628,8 @@
                 React.createElement("div", { className: "mt-2" },
                   React.createElement("button", {
                     className: "btn btn-secondary mr-2",
-                    onClick: () => setIsDesigner(!isDesigner)
+                    onClick: () => setIsDesigner(!isDesigner),
+                    disabled: !creator
                   }, isDesigner ? "Switch to Fill Mode" : "Switch to Design Mode")
                 )
               ),
@@ -654,6 +706,7 @@
       };
       console.log(`[${timestamp}] [validateDependencies] Check:`, checks);
       if (Object.values(checks).some(v => v.includes("Not loaded")) || checks.render !== "Available") {
+        console.error(`[${timestamp}] [validateDependencies] Dependency check failed:`, checks);
         throw new Error("Dependencies missing: " + JSON.stringify(checks));
       }
       if (React.version !== "17.0.2") {
@@ -731,6 +784,8 @@
                         adminRoot
                       );
                       console.log(`[${timestamp}] [useEffect] Admin links rendered`);
+                    } else {
+                      console.warn(`[${timestamp}] [useEffect] adminLinks element not found`);
                     }
                   }
 
@@ -757,7 +812,7 @@
               loadData();
               $('#searchBox').on('input', handleSearch);
               return () => $('#searchBox').off('input', handleSearch);
-            }, [events]);
+            }, []);
 
             React.useEffect(() => {
               const timestamp = new Date().toISOString();
