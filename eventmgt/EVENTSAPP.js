@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED NO EVENTS FOUND, REGISTRATION NOT SAVED ===
+// === SP 2016 ON-PREM – FIXED EVENTS NOT LOADING, FUNCTIONAL COMPONENT ===
 (function () {
   'use strict';
 
@@ -121,53 +121,65 @@
 
       console.log(`[${timestamp}] [App Init] FULL CONTEXT READY:`, { site: ctx.site, user: ctx.userEmail });
 
-      class App extends React.Component {
-        constructor(props) {
-          super(props);
-          this.state = {
-            events: [],
-            myRegs: [],
-            isAdmin: false,
-            search: '',
-            loading: true,
-            unregId: null
-          };
-          this.handleSearch = this.handleSearch.bind(this);
-          this.register = this.register.bind(this);
-          this.showUnreg = this.showUnreg.bind(this);
-          this.unregister = this.unregister.bind(this);
-          this.refreshMyRegs = this.refreshMyRegs.bind(this);
-        }
+      const App = () => {
+        // State Hooks
+        const [events, setEvents] = React.useState([]);
+        const [myRegs, setMyRegs] = React.useState([]);
+        const [isAdmin, setIsAdmin] = React.useState(false);
+        const [search, setSearch] = React.useState('');
+        const [loading, setLoading] = React.useState(true);
+        const [unregId, setUnregId] = React.useState(null);
 
-        componentDidMount() {
+        // Context Refs
+        const siteRef = React.useRef(ctx.site);
+        const userEmailRef = React.useRef(ctx.userEmail);
+        const digestRef = React.useRef(ctx.digest);
+
+        // useEffect for componentDidMount
+        React.useEffect(() => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [componentDidMount] Initializing component...`);
-          this.site = ctx.site;
-          this.userEmail = ctx.userEmail;
-          this.digest = ctx.digest;
+          console.log(`[${timestamp}] [useEffect] Initializing component...`);
 
-          appInstance = this; // Store component instance
-          $('#searchBox').on('input', this.handleSearch);
-          this.checkAdmin(() => {
-            console.log(`[${timestamp}] [componentDidMount] Admin check done. Loading events...`);
-            this.loadEvents();
-            this.loadMyRegs();
+          appInstance = {
+            unregister,
+            refreshMyRegs,
+            showUnreg,
+            register
+          };
+
+          $('#searchBox').on('input', handleSearch);
+
+          checkAdmin(() => {
+            console.log(`[${timestamp}] [useEffect] Admin check done. Loading events...`);
+            loadEvents();
+            loadMyRegs();
           });
-        }
 
-        checkAdmin(cb) {
+          return () => {
+            $('#searchBox').off('input', handleSearch);
+          };
+        }, []);
+
+        const handleSearch = (e) => {
+          const timestamp = new Date().toISOString();
+          console.log(`[${timestamp}] [handleSearch] Search updated:`, e.target.value);
+          setSearch(e.target.value.toLowerCase());
+          if (!loading) renderCards();
+        };
+
+        const checkAdmin = (cb) => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [checkAdmin] Checking if user is in 'Event Managers'...`);
           $.ajax({
-            url: this.site + "/_api/web/currentuser/groups?$filter=Title eq 'Event Managers'",
+            url: siteRef.current + "/_api/web/currentuser/groups?$filter=Title eq 'Event Managers'",
             headers: { Accept: "application/json; odata=verbose" },
             timeout: 5000,
             success: d => {
               try {
                 const isAdmin = d.d?.results?.length > 0;
                 console.log(`[${timestamp}] [checkAdmin] User is${isAdmin ? '' : ' not'} admin`);
-                this.setState({ isAdmin });
-                if (isAdmin) this.renderAdminLinks();
+                setIsAdmin(isAdmin);
+                if (isAdmin) renderAdminLinks();
                 cb();
               } catch (e) {
                 console.warn(`[${timestamp}] [checkAdmin] Error parsing admin response:`, e);
@@ -179,9 +191,9 @@
               cb();
             }
           });
-        }
+        };
 
-        renderAdminLinks() {
+        const renderAdminLinks = () => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [renderAdminLinks] Rendering admin links...`);
           try {
@@ -194,22 +206,14 @@
           } catch (e) {
             handleError("Render Admin Links", e, "Failed to render admin links.");
           }
-        }
+        };
 
-        handleSearch(e) {
-          const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [handleSearch] Search updated:`, e.target.value);
-          this.setState({ search: e.target.value.toLowerCase() }, () => {
-            if (!this.state.loading) this.renderCards();
-          });
-        }
-
-        loadEvents() {
+        const loadEvents = () => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [loadEvents] STARTED`);
 
-          const q = "?$select=Id,Title,StartDate,EndDate,Location,Instructor/Title,MaxSeats,AllowRegistration,IsOver,Attachments&$expand=Instructor";
-          const url = this.site + "/_api/web/lists/getbytitle('Events')/items" + q;
+          const q = "?$select=Id,Title,StartDate,EndDate,Location,Instructor,MaxSeats,AllowRegistration,IsOver,Attachments";
+          const url = siteRef.current + "/_api/web/lists/getbytitle('Events')/items" + q;
 
           $.ajax({
             url,
@@ -226,7 +230,7 @@
                     StartTime: ev.StartDate,
                     EndTime: ev.EndDate,
                     Room: ev.Location || "TBD",
-                    Instructor: { Title: ev.Instructor?.Title || "TBD" },
+                    Instructor: ev.Instructor || "TBD",
                     MaxSeats: ev.MaxSeats || null,
                     AllowRegistration: ev.AllowRegistration === true || ev.AllowRegistration === "1",
                     IsOver: ev.IsOver === true || ev.IsOver === "1",
@@ -239,30 +243,33 @@
 
                 if (evs.length === 0) {
                   console.log(`[${timestamp}] [loadEvents] No events found in response`);
-                  this.setState({ events: [], loading: false }, () => {
-                    $("#loading").hide();
-                    this.renderCards();
-                  });
+                  setEvents([]);
+                  setLoading(false);
+                  $("#loading").hide();
+                  renderCards();
                   return;
                 }
 
-                Promise.all(evs.map(e => this.getRegCount(e.Id).then(c => ({ ...e, regCount: c }))))
+                Promise.all(evs.map(e => getRegCount(e.Id).then(c => ({ ...e, regCount: c }))))
                   .then(processed => {
                     console.log(`[${timestamp}] [loadEvents] Events with reg counts:`, processed.length);
-                    this.setState({ events: processed, loading: false }, () => {
-                      $("#loading").hide();
-                      this.renderCards();
-                    });
+                    setEvents(processed);
+                    setLoading(false);
+                    $("#loading").hide();
+                    renderCards();
                   })
                   .catch(err => {
                     console.warn(`[${timestamp}] [loadEvents] Error processing reg counts:`, err);
-                    this.setState({ events: evs.map(e => ({ ...e, regCount: 0 })), loading: false }, () => {
-                      $("#loading").hide();
-                      this.renderCards();
-                    });
+                    setEvents(evs.map(e => ({ ...e, regCount: 0 })));
+                    setLoading(false);
+                    $("#loading").hide();
+                    renderCards();
                   });
               } catch (err) {
                 handleError("Parse Events", err, "Failed to parse events data. Check list columns or response format.");
+                setLoading(false);
+                $("#loading").hide();
+                renderCards();
               }
             },
             error: xhr => {
@@ -276,31 +283,31 @@
               if (xhr.status === 403) msg = "Access denied to Events list. Contact your administrator.";
               if (xhr.status === 400) msg = "Invalid query. Check column names in Events list.";
               handleError("Load Events", xhr, msg);
-              this.setState({ events: [], loading: false }, () => {
-                $("#loading").hide();
-                this.renderCards();
-              });
+              setEvents([]);
+              setLoading(false);
+              $("#loading").hide();
+              renderCards();
             }
           });
-        }
+        };
 
-        loadMyRegs() {
+        const loadMyRegs = () => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [loadMyRegs] Loading user registrations for:`, this.userEmail);
+          console.log(`[${timestamp}] [loadMyRegs] Loading user registrations for:`, userEmailRef.current);
 
           return new Promise((resolve, reject) => {
-            if (!this.userEmail || this.userEmail === 'unknown') {
-              console.error(`[${timestamp}] [loadMyRegs] Invalid userEmail:`, this.userEmail);
+            if (!userEmailRef.current || userEmailRef.current === 'unknown') {
+              console.error(`[${timestamp}] [loadMyRegs] Invalid userEmail:`, userEmailRef.current);
               handleError("Load My Registrations", new Error("Invalid user email"), "Cannot load registrations due to invalid user email.");
-              this.setState({ myRegs: [], loading: false }, () => {
-                this.renderCards();
-                resolve([]);
-              });
+              setMyRegs([]);
+              setLoading(false);
+              renderCards();
+              resolve([]);
               return;
             }
 
-            const query = `${this.site}/_api/web/lists/getbytitle('Registrations')/items` +
-                          `?$filter=UserEmail eq '${this.userEmail.replace(/'/g, "''")}'` +
+            const query = `${siteRef.current}/_api/web/lists/getbytitle('Registrations')/items` +
+                          `?$filter=UserEmail eq '${userEmailRef.current.replace(/'/g, "''")}'` +
                           `&$select=Id,EventLookupId,Status,WaitlistPosition,Title,RegistrationDate,EventLookupId/Id` +
                           `&$expand=EventLookupId`;
             console.log(`[${timestamp}] [loadMyRegs] Query URL:`, query);
@@ -327,17 +334,17 @@
                     };
                   });
                   console.log(`[${timestamp}] [loadMyRegs] My registrations loaded:`, registrations.length, registrations);
-                  this.setState({ myRegs: registrations, loading: false }, () => {
-                    this.renderCards();
-                    resolve(registrations);
-                  });
+                  setMyRegs(registrations);
+                  setLoading(false);
+                  renderCards();
+                  resolve(registrations);
                 } catch (e) {
                   console.error(`[${timestamp}] [loadMyRegs] Error parsing registrations:`, e);
                   handleError("Parse Registrations", e, "Failed to parse user registrations.");
-                  this.setState({ myRegs: [], loading: false }, () => {
-                    this.renderCards();
-                    resolve([]);
-                  });
+                  setMyRegs([]);
+                  setLoading(false);
+                  renderCards();
+                  resolve([]);
                 }
               },
               error: (xhr, status, error) => {
@@ -352,28 +359,28 @@
                 if (xhr.status === 404) userMsg = "Registrations list not found. Verify list name.";
                 if (xhr.status === 400) userMsg = "Invalid query. Check UserEmail or EventLookupId configuration.";
                 handleError("Load My Registrations", xhr, userMsg);
-                this.setState({ myRegs: [], loading: false }, () => {
-                  this.renderCards();
-                  resolve([]);
-                });
+                setMyRegs([]);
+                setLoading(false);
+                renderCards();
+                resolve([]);
               }
             });
           });
-        }
+        };
 
-        refreshMyRegs() {
+        const refreshMyRegs = () => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [refreshMyRegs] Manually refreshing registrations...`);
-          this.loadMyRegs();
-        }
+          loadMyRegs();
+        };
 
-        getRegCount(id) {
+        const getRegCount = (id) => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [getRegCount] Getting registration count for Event ID:`, id);
 
           return new Promise(r => {
             $.ajax({
-              url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and Status eq 'Confirmed'&$select=Id",
+              url: siteRef.current + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and Status eq 'Confirmed'&$select=Id",
               headers: { Accept: "application/json; odata=verbose" },
               timeout: 10000,
               success: d => {
@@ -386,21 +393,21 @@
               }
             });
           });
-        }
+        };
 
-        async checkExistingRegistration(id) {
+        const checkExistingRegistration = (id) => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [checkExistingRegistration] Checking registration for Event ID:`, id, "User:", this.userEmail);
+          console.log(`[${timestamp}] [checkExistingRegistration] Checking registration for Event ID:`, id, "User:", userEmailRef.current);
 
           return new Promise(resolve => {
-            if (!this.userEmail || this.userEmail === 'unknown') {
-              console.warn(`[${timestamp}] [checkExistingRegistration] Invalid userEmail:`, this.userEmail);
+            if (!userEmailRef.current || userEmailRef.current === 'unknown') {
+              console.warn(`[${timestamp}] [checkExistingRegistration] Invalid userEmail:`, userEmailRef.current);
               resolve(null);
               return;
             }
 
-            const query = `${this.site}/_api/web/lists/getbytitle('Registrations')/items` +
-                          `?$filter=EventLookupId eq ${id} and UserEmail eq '${this.userEmail.replace(/'/g, "''")}'` +
+            const query = `${siteRef.current}/_api/web/lists/getbytitle('Registrations')/items` +
+                          `?$filter=EventLookupId eq ${id} and UserEmail eq '${userEmailRef.current.replace(/'/g, "''")}'` +
                           `&$select=Id,Status,WaitlistPosition,Title,EventLookupId/Id&$expand=EventLookupId`;
             console.log(`[${timestamp}] [checkExistingRegistration] Query URL:`, query);
 
@@ -419,9 +426,9 @@
               }
             });
           });
-        }
+        };
 
-        async register(id) {
+        const register = async (id) => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [register] Attempting registration for Event ID:`, id);
 
@@ -433,7 +440,7 @@
             }
             console.log(`[${timestamp}] [register] Event ID validated:`, id);
 
-            const ev = this.state.events.find(e => e.Id === id);
+            const ev = events.find(e => e.Id === id);
             if (!ev) {
               console.error(`[${timestamp}] [register] Event not found for ID:`, id);
               alert("Event not found.");
@@ -446,8 +453,8 @@
             }
             console.log(`[${timestamp}] [register] Event validated:`, ev.Title);
 
-            if (!this.userEmail || this.userEmail === 'unknown') {
-              console.error(`[${timestamp}] [register] Invalid userEmail:`, this.userEmail);
+            if (!userEmailRef.current || userEmailRef.current === 'unknown') {
+              console.error(`[${timestamp}] [register] Invalid userEmail:`, userEmailRef.current);
               alert("Invalid user email. Cannot proceed with registration.");
               return;
             }
@@ -455,12 +462,13 @@
             console.log(`[${timestamp}] [register] Before loadMyRegs...`);
             let myRegs = [];
             try {
-              myRegs = await this.loadMyRegs();
+              myRegs = await loadMyRegs();
               console.log(`[${timestamp}] [register] After loadMyRegs, registrations:`, myRegs.length, myRegs);
             } catch (err) {
               console.error(`[${timestamp}] [register] loadMyRegs failed:`, err);
               alert("Failed to load registrations. Please try again.");
-              this.setState({ loading: false }, () => this.renderCards());
+              setLoading(false);
+              renderCards();
               return;
             }
 
@@ -468,64 +476,69 @@
             if (localReg) {
               console.log(`[${timestamp}] [register] Found in local state for Event ID ${id}:`, localReg);
               alert("You are already " + (localReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${localReg.WaitlistPosition})`));
-              this.setState({ loading: false }, () => this.renderCards());
+              setLoading(false);
+              renderCards();
               return;
             }
             console.log(`[${timestamp}] [register] No local registration found`);
 
             console.log(`[${timestamp}] [register] Double-checking via REST...`);
-            const existingReg = await this.checkExistingRegistration(id);
+            const existingReg = await checkExistingRegistration(id);
             if (existingReg) {
               console.log(`[${timestamp}] [register] Already registered via REST for Event ID ${id}:`, existingReg);
               alert("You are already " + (existingReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${existingReg.WaitlistPosition})`));
-              this.setState({ loading: false }, () => this.renderCards());
+              setLoading(false);
+              renderCards();
               return;
             }
             console.log(`[${timestamp}] [register] No existing registration via REST`);
 
             console.log(`[${timestamp}] [register] Checking seat availability...`);
-            const count = await this.getRegCount(id);
+            const count = await getRegCount(id);
             const full = ev.MaxSeats && count >= ev.MaxSeats;
             console.log(`[${timestamp}] [register] Event ID ${id} - Seats: ${count}/${ev.MaxSeats || 'Unlimited'}, Full: ${full}`);
 
             console.log(`[${timestamp}] [register] Refreshing digest before registration...`);
-            this.digest = await refreshDigest(this.site);
-            if (!this.digest) {
+            digestRef.current = await refreshDigest(siteRef.current);
+            if (!digestRef.current) {
               console.error(`[${timestamp}] [register] Failed to refresh digest`);
               alert("Failed to refresh form digest. Please try again.");
-              this.setState({ loading: false }, () => this.renderCards());
+              setLoading(false);
+              renderCards();
               return;
             }
 
             if (!full) {
               console.log(`[${timestamp}] [register] Creating confirmed registration...`);
-              await this.createReg(id, 'Confirmed', null, ev.Title);
+              await createReg(id, 'Confirmed', null, ev.Title);
             } else {
-              const pos = await this.getNextWaitlistPosition(id);
+              const pos = await getNextWaitlistPosition(id);
               console.log(`[${timestamp}] [register] Event full. Offering waitlist position:`, pos);
               if (confirm(`Event full. Join waitlist #${pos}?`)) {
                 console.log(`[${timestamp}] [register] Creating waitlist registration...`);
-                await this.createReg(id, 'Waitlisted', pos, ev.Title);
+                await createReg(id, 'Waitlisted', pos, ev.Title);
               } else {
                 console.log(`[${timestamp}] [register] User declined waitlist for Event ID:`, id);
                 alert("Waitlist registration cancelled.");
-                this.setState({ loading: false }, () => this.renderCards());
+                setLoading(false);
+                renderCards();
                 return;
               }
             }
           } catch (err) {
             console.error(`[${timestamp}] [register] Unexpected error in registration:`, err);
             handleError("Register", err, "Failed to process registration. Please check permissions or list settings.");
-            this.setState({ loading: false }, () => this.renderCards());
+            setLoading(false);
+            renderCards();
           }
-        }
+        };
 
-        async createReg(id, status, pos, title, retryCount = 0) {
+        const createReg = async (id, status, pos, title, retryCount = 0) => {
           const maxRetries = 2;
           const timestamp = new Date().toISOString();
           const registrationDate = new Date().toISOString();
           console.log(`[${timestamp}] [createReg] Creating registration for Event ID:`, id, {
-            userEmail: this.userEmail,
+            userEmail: userEmailRef.current,
             status,
             waitlistPosition: pos,
             title,
@@ -534,38 +547,36 @@
           });
 
           try {
-            const eventExists = this.state.events.some(e => e.Id === id);
+            const eventExists = events.some(e => e.Id === id);
             if (!eventExists) {
               console.error(`[${timestamp}] [createReg] Event ID ${id} does not exist in state`);
               throw new Error(`Event ID ${id} not found in loaded events.`);
             }
 
-            if (!this.userEmail || this.userEmail === 'unknown') {
-              console.error(`[${timestamp}] [createReg] Invalid userEmail:`, this.userEmail);
+            if (!userEmailRef.current || userEmailRef.current === 'unknown') {
+              console.error(`[${timestamp}] [createReg] Invalid userEmail:`, userEmailRef.current);
               throw new Error("Invalid user email. Cannot create registration.");
             }
 
-            // Validate EventLookupIdId
-            const validEvent = await this.validateEventId(id);
+            const validEvent = await validateEventId(id);
             if (!validEvent) {
               console.error(`[${timestamp}] [createReg] Invalid Event ID ${id} in Events list`);
               throw new Error(`Event ID ${id} does not exist in Events list.`);
             }
 
-            // Ensure fresh digest
-            this.digest = await refreshDigest(this.site);
-            if (!this.digest) {
+            digestRef.current = await refreshDigest(siteRef.current);
+            if (!digestRef.current) {
               console.error(`[${timestamp}] [createReg] Failed to refresh digest`);
               throw new Error("Failed to refresh digest for registration.");
             }
 
             const response = await $.ajax({
-              url: this.site + "/_api/web/lists/getbytitle('Registrations')/items",
+              url: siteRef.current + "/_api/web/lists/getbytitle('Registrations')/items",
               type: "POST",
               data: JSON.stringify({
                 '__metadata': { type: 'SP.Data.RegistrationsListItem' },
                 EventLookupIdId: id,
-                UserEmail: this.userEmail,
+                UserEmail: userEmailRef.current,
                 Status: status,
                 WaitlistPosition: pos !== null ? pos : null,
                 Title: title || "Event Registration",
@@ -573,16 +584,17 @@
               }),
               headers: {
                 Accept: "application/json; odata=verbose",
-                "X-RequestDigest": this.digest,
+                "X-RequestDigest": digestRef.current,
                 "Content-Type": "application/json; odata=verbose"
               },
               timeout: 15000
             });
             console.log(`[${timestamp}] [createReg] Registration created successfully for Event ID ${id}:`, response);
             alert(status === 'Confirmed' ? 'Registered successfully!' : `Added to waitlist #${pos}`);
-            await this.loadEvents();
-            await this.loadMyRegs();
-            this.setState({ loading: false }, () => this.renderCards());
+            await loadEvents();
+            await loadMyRegs();
+            setLoading(false);
+            renderCards();
           } catch (xhr) {
             const msg = xhr.responseJSON?.error?.message?.value || "Registration failed";
             console.error(`[${timestamp}] [createReg] Error for Event ID ${id}:`, msg, {
@@ -593,15 +605,16 @@
 
             if ((msg.includes("A list item with ID") || msg.includes("already exists")) && retryCount < maxRetries) {
               console.log(`[${timestamp}] [createReg] Duplicate error detected. Retrying (${retryCount + 1}/${maxRetries})...`);
-              await this.loadMyRegs();
-              const existingReg = await this.checkExistingRegistration(id);
+              await loadMyRegs();
+              const existingReg = await checkExistingRegistration(id);
               if (existingReg) {
                 console.log(`[${timestamp}] [createReg] Confirmed existing registration on retry:`, existingReg);
                 alert("You are already " + (existingReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${existingReg.WaitlistPosition})`));
-                this.setState({ loading: false }, () => this.renderCards());
+                setLoading(false);
+                renderCards();
               } else {
                 console.log(`[${timestamp}] [createReg] No existing registration on retry. Attempting again...`);
-                await this.createReg(id, status, pos, title, retryCount + 1);
+                await createReg(id, status, pos, title, retryCount + 1);
               }
             } else {
               let userMsg = `Failed to register: ${msg}`;
@@ -610,18 +623,19 @@
               if (xhr.status === 404) userMsg = "Registrations list not found. Verify list name.";
               if (xhr.status === 409) userMsg = "Duplicate registration detected. Please check existing registrations.";
               handleError("Create Registration", xhr, userMsg);
-              this.setState({ loading: false }, () => this.renderCards());
+              setLoading(false);
+              renderCards();
             }
           }
-        }
+        };
 
-        async validateEventId(id) {
+        const validateEventId = (id) => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [validateEventId] Validating Event ID:`, id);
 
           return new Promise(resolve => {
             $.ajax({
-              url: this.site + "/_api/web/lists/getbytitle('Events')/items(" + id + ")?$select=Id",
+              url: siteRef.current + "/_api/web/lists/getbytitle('Events')/items(" + id + ")?$select=Id",
               headers: { Accept: "application/json; odata=verbose" },
               timeout: 5000,
               success: d => {
@@ -634,15 +648,15 @@
               }
             });
           });
-        }
+        };
 
-        getNextWaitlistPosition(id) {
+        const getNextWaitlistPosition = (id) => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [getNextWaitlistPosition] Getting next waitlist position for Event ID:`, id);
 
           return new Promise(r => {
             $.ajax({
-              url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and Status eq 'Waitlisted'&$orderby=WaitlistPosition desc&$top=1&$select=WaitlistPosition",
+              url: siteRef.current + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and Status eq 'Waitlisted'&$orderby=WaitlistPosition desc&$top=1&$select=WaitlistPosition",
               headers: { Accept: "application/json; odata=verbose" },
               timeout: 5000,
               success: d => {
@@ -656,31 +670,30 @@
               }
             });
           });
-        }
+        };
 
-        showUnreg(id) {
+        const showUnreg = (id) => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [showUnreg] Showing unregister modal for Event ID:`, id);
-          this.setState({ unregId: id });
+          setUnregId(id);
           $("#unregModal").modal("show");
-        }
+        };
 
-        async unregister() {
+        const unregister = async () => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [unregister] Unregistering for Event ID:`, this.state.unregId);
+          console.log(`[${timestamp}] [unregister] Unregistering for Event ID:`, unregId);
 
-          const id = this.state.unregId;
           $("#unregModal").modal("hide");
 
           try {
             console.log(`[${timestamp}] [unregister] Refreshing digest before unregister...`);
-            this.digest = await refreshDigest(this.site);
-            if (!this.digest) {
+            digestRef.current = await refreshDigest(siteRef.current);
+            if (!digestRef.current) {
               throw new Error("Failed to refresh digest for unregister.");
             }
 
-            const query = `${this.site}/_api/web/lists/getbytitle('Registrations')/items` +
-                          `?$filter=EventLookupId eq ${id} and UserEmail eq '${this.userEmail.replace(/'/g, "''")}'` +
+            const query = `${siteRef.current}/_api/web/lists/getbytitle('Registrations')/items` +
+                          `?$filter=EventLookupId eq ${unregId} and UserEmail eq '${userEmailRef.current.replace(/'/g, "''")}'` +
                           `&$select=Id,EventLookupId/Id&$expand=EventLookupId`;
             console.log(`[${timestamp}] [unregister] Query URL:`, query);
 
@@ -691,58 +704,61 @@
             });
             const reg = response.d?.results?.[0];
             if (!reg) {
-              console.warn(`[${timestamp}] [unregister] No registration found for Event ID:`, id);
+              console.warn(`[${timestamp}] [unregister] No registration found for Event ID:`, unregId);
               alert("You are not registered for this event.");
-              this.setState({ loading: false }, () => this.renderCards());
+              setLoading(false);
+              renderCards();
               return;
             }
 
             console.log(`[${timestamp}] [unregister] Deleting registration ID:`, reg.Id);
             await $.ajax({
-              url: this.site + "/_api/web/lists/getbytitle('Registrations')/items(" + reg.Id + ")",
+              url: siteRef.current + "/_api/web/lists/getbytitle('Registrations')/items(" + reg.Id + ")",
               type: "POST",
               headers: {
                 Accept: "application/json; odata=verbose",
-                "X-RequestDigest": this.digest,
+                "X-RequestDigest": digestRef.current,
                 "If-Match": "*",
                 "X-HTTP-Method": "DELETE"
               },
               timeout: 5000
             });
-            console.log(`[${timestamp}] [unregister] Registration deleted successfully for Event ID:`, id);
-            await this.loadEvents();
-            await this.loadMyRegs();
+            console.log(`[${timestamp}] [unregister] Registration deleted successfully for Event ID:`, unregId);
+            await loadEvents();
+            await loadMyRegs();
             console.log(`[${timestamp}] [unregister] UI updated after deletion`);
             alert("Registration cancelled successfully.");
-            this.setState({ loading: false }, () => this.renderCards());
+            setLoading(false);
+            renderCards();
           } catch (xhr) {
-            console.error(`[${timestamp}] [unregister] Error unregistering for Event ID ${id}:`, xhr);
+            console.error(`[${timestamp}] [unregister] Error unregistering for Event ID ${unregId}:`, xhr);
             let userMsg = "Failed to cancel registration.";
             if (xhr.status === 403) userMsg = "Access denied. Please check your permissions.";
             if (xhr.status === 404) userMsg = "Registration not found.";
             if (xhr.status === 400) userMsg = "Invalid request. Please check list settings.";
             handleError("Unregister", xhr, userMsg);
-            this.setState({ loading: false }, () => this.renderCards());
+            setLoading(false);
+            renderCards();
           }
-        }
+        };
 
-        renderCards() {
+        const renderCards = () => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [renderCards] Rendering event cards...`);
 
-          if (this.state.loading) {
+          if (loading) {
             console.log(`[${timestamp}] [renderCards] Still loading, skipping render`);
             return;
           }
 
-          const filtered = this.state.events.filter(e =>
-            e.Title.toLowerCase().includes(this.state.search) ||
-            (e.Room && e.Room.toLowerCase().includes(this.state.search))
+          const filtered = events.filter(e =>
+            e.Title.toLowerCase().includes(search) ||
+            (e.Room && e.Room.toLowerCase().includes(search))
           );
           console.log(`[${timestamp}] [renderCards] Filtered events:`, filtered.length);
 
           const cards = filtered.length ? filtered.map(ev => {
-            const myReg = this.state.myRegs.find(r => r.EventLookupId === ev.Id);
+            const myReg = myRegs.find(r => r.EventLookupId === ev.Id);
             const isFull = ev.MaxSeats && ev.regCount >= ev.MaxSeats;
             const isPast = new Date(ev.EndTime) < new Date();
             const canReg = ev.AllowRegistration && !isPast;
@@ -766,12 +782,12 @@
                 ? React.createElement("button", { className: "btn btn-success btn-sm disabled" }, "Registered")
                 : React.createElement("button", { className: "btn btn-warning btn-sm disabled" }, `Waitlist #${myReg.WaitlistPosition}`);
               btn = React.createElement("div", null, status,
-                React.createElement("button", { className: "btn btn-danger btn-sm", onClick: () => this.showUnreg(ev.Id) }, "Cancel")
+                React.createElement("button", { className: "btn btn-danger btn-sm", onClick: () => showUnreg(ev.Id) }, "Cancel")
               );
             } else {
               btn = React.createElement("div", null,
-                React.createElement("button", { className: "btn btn-success btn-sm", onClick: () => this.register(ev.Id) }, isFull ? "Join Waitlist" : "Register"),
-                React.createElement("button", { className: "btn btn-info btn-sm", onClick: () => this.refreshMyRegs() }, "Refresh")
+                React.createElement("button", { className: "btn btn-success btn-sm", onClick: () => register(ev.Id) }, isFull ? "Join Waitlist" : "Register"),
+                React.createElement("button", { className: "btn btn-info btn-sm", onClick: () => refreshMyRegs() }, "Refresh")
               );
             }
 
@@ -781,7 +797,7 @@
                 React.createElement("div", { className: "panel-body" },
                   React.createElement("p", null, "Time: ", new Date(ev.StartTime).toLocaleString(), " - ", new Date(ev.EndTime).toLocaleString()),
                   React.createElement("p", null, "Room: ", ev.Room || "TBD"),
-                  React.createElement("p", null, "Instructor: ", ev.Instructor?.Title || "TBD"),
+                  React.createElement("p", null, "Instructor: ", ev.Instructor || "TBD"),
                   React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
                 ),
                 React.createElement("div", { className: "panel-footer text-right" }, btn)
@@ -791,10 +807,10 @@
 
           console.log(`[${timestamp}] [renderCards] Rendering ${cards.length} cards`);
           ReactDOM.render(React.createElement("div", { className: "row" }, cards), document.getElementById("root"));
-        }
+        };
 
-        render() { return null; }
-      }
+        return null;
+      };
 
       $(document).on('click', '#confirmUnreg', () => {
         const timestamp = new Date().toISOString();
