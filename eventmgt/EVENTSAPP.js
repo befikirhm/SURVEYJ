@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED LOADING STATE ISSUE, FUNCTIONAL COMPONENT ===
+// === SP 2016 ON-PREM – FIXED CLOSED EVENTS AND REGISTRATION ===
 (function () {
   'use strict';
 
@@ -142,7 +142,7 @@
             setTimeout(() => {
               console.log(`[${timestamp}] [useEffect] Triggering renderCards after loading change`);
               renderCards();
-            }, 0); // Ensure state update propagates
+            }, 0);
           }
         }, [loading]);
 
@@ -275,17 +275,17 @@
                 console.log(`[${timestamp}] [loadEvents] Raw response:`, d);
                 try {
                   let evs = (d.d?.results || []).map(ev => {
-                    console.log(`[${timestamp}] [loadEvents] Processing event:`, ev.Id, ev.Title);
+                    console.log(`[${timestamp}] [loadEvents] Processing event:`, ev.Id, ev.Title, { StartDate: ev.StartDate, EndDate: ev.EndDate, AllowRegistration: ev.AllowRegistration });
                     return {
                       Id: ev.Id,
                       Title: ev.Title || "Untitled Event",
-                      StartTime: ev.StartDate || new Date().toISOString(),
-                      EndTime: ev.EndDate || new Date().toISOString(),
+                      StartTime: ev.StartDate ? new Date(ev.StartDate).toISOString() : new Date().toISOString(),
+                      EndTime: ev.EndDate ? new Date(ev.EndDate).toISOString() : new Date().toISOString(),
                       Room: ev.Location || "TBD",
                       Instructor: ev.Instructor || "TBD",
                       MaxSeats: ev.MaxSeats || null,
-                      AllowRegistration: ev.AllowRegistration === true || ev.AllowRegistration === "1",
-                      IsOver: ev.IsOver === true || ev.IsOver === "1",
+                      AllowRegistration: ev.AllowRegistration === true || ev.AllowRegistration === "1" || ev.AllowRegistration === 1,
+                      IsOver: ev.IsOver === true || ev.IsOver === "1" || ev.IsOver === 1,
                       Attachments: ev.Attachments || false,
                       regCount: 0
                     };
@@ -475,6 +475,7 @@
           try {
             setLoading(true);
             $("#loading").show();
+            console.log(`[${timestamp}] [register] Loading state set to true`);
 
             if (!Number.isInteger(id) || id <= 0) {
               console.error(`[${timestamp}] [register] Invalid Event ID:`, id);
@@ -491,13 +492,23 @@
               setLoading(false);
               return;
             }
+            console.log(`[${timestamp}] [register] Event found:`, ev);
+
             if (!ev.AllowRegistration) {
-              console.warn(`[${timestamp}] [register] Registration closed for Event ID:`, id);
-              alert("Registration closed.");
+              console.warn(`[${timestamp}] [register] Registration closed for Event ID:`, id, `AllowRegistration:`, ev.AllowRegistration);
+              alert("Registration closed for this event.");
               setLoading(false);
               return;
             }
-            console.log(`[${timestamp}] [register] Event validated:`, ev.Title);
+
+            const isPast = new Date(ev.EndTime) < new Date();
+            if (isPast) {
+              console.warn(`[${timestamp}] [register] Event is past for Event ID:`, id, `EndTime:`, ev.EndTime);
+              alert("This event has ended.");
+              setLoading(false);
+              return;
+            }
+            console.log(`[${timestamp}] [register] Event is open for registration:`, ev.Title);
 
             if (!userEmailRef.current || userEmailRef.current === 'unknown') {
               console.error(`[${timestamp}] [register] Invalid userEmail:`, userEmailRef.current);
@@ -505,6 +516,7 @@
               setLoading(false);
               return;
             }
+            console.log(`[${timestamp}] [register] User email validated:`, userEmailRef.current);
 
             console.log(`[${timestamp}] [register] Before loadMyRegs...`);
             let myRegsLocal = [];
@@ -812,7 +824,7 @@
           const cards = filtered.length ? filtered.map(ev => {
             const myReg = myRegs.find(r => r.EventLookupId === ev.Id);
             const isFull = ev.MaxSeats && ev.regCount >= ev.MaxSeats;
-            const isPast = new Date(ev.EndTime) < new Date();
+            const isPast = new Date(ev.EndTime).getTime() < new Date().getTime();
             const canReg = ev.AllowRegistration && !isPast;
 
             console.log(`[${timestamp}] [renderCards] Event ID ${ev.Id}:`, {
@@ -821,7 +833,10 @@
               isPast,
               canReg,
               registered: !!myReg,
-              status: myReg?.Status
+              status: myReg?.Status,
+              startTime: ev.StartTime,
+              endTime: ev.EndTime,
+              allowRegistration: ev.AllowRegistration
             });
 
             const panelCls = isFull || isPast ? "panel panel-default card-full" + (isPast ? " card-past" : "") : "panel panel-primary";
