@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED CANREG FALSE AND CARDS CLOSED ===
+// === SP 2016 ON-PREM – FIXED UNREGISTER AND UNREGID NULL ===
 (function () {
   'use strict';
 
@@ -202,11 +202,25 @@
               });
           });
 
+          // Attach unregister event handler
+          const handleConfirmUnreg = () => {
+            console.log(`[${timestamp}] [confirmUnreg] Unregister button clicked, unregId:`, unregId);
+            if (appInstance && typeof appInstance.unregister === 'function') {
+              appInstance.unregister(unregId);
+            } else {
+              console.error(`[${timestamp}] [confirmUnreg] appInstance.unregister is not a function`, appInstance);
+              alert("Error: Unable to cancel registration. Please check console for details.");
+            }
+          };
+
+          $(document).off('click', '#confirmUnreg').on('click', '#confirmUnreg', handleConfirmUnreg);
+
           return () => {
             $('#searchBox').off('input', handleSearch);
+            $(document).off('click', '#confirmUnreg');
             clearTimeout(timeout);
           };
-        }, []);
+        }, [unregId]); // Add unregId to dependencies to ensure handler updates
 
         const handleSearch = (e) => {
           const timestamp = new Date().toISOString();
@@ -293,7 +307,7 @@
                       Room: ev.Location || "TBD",
                       Instructor: ev.Instructor || "TBD",
                       MaxSeats: ev.MaxSeats || null,
-                      AllowRegistration: !!ev.AllowRegistration, // Handle Yes/No field (true/false)
+                      AllowRegistration: !!ev.AllowRegistration,
                       IsOver: !!ev.IsOver,
                       Attachments: ev.Attachments || false,
                       regCount: 0
@@ -752,29 +766,42 @@
         const showUnreg = (id) => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [showUnreg] Showing unregister modal for Event ID:`, id);
+          if (!Number.isInteger(id) || id <= 0) {
+            console.error(`[${timestamp}] [showUnreg] Invalid Event ID:`, id);
+            alert("Invalid event ID for unregister.");
+            return;
+          }
           setUnregId(id);
           $("#unregModal").modal("show");
         };
 
-        const unregister = async () => {
+        const unregister = async (eventId) => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [unregister] Unregistering for Event ID:`, unregId);
+          console.log(`[${timestamp}] [unregister] Unregistering for Event ID:`, eventId);
 
-          $("#unregModal").modal("hide");
+          if (!Number.isInteger(eventId) || eventId <= 0) {
+            console.error(`[${timestamp}] [unregister] Invalid Event ID:`, eventId);
+            alert("Invalid event ID for unregister.");
+            setLoading(false);
+            $("#unregModal").modal("hide");
+            return;
+          }
 
           try {
             setLoading(true);
             $("#loading").show();
+            $("#unregModal").modal("hide");
 
             console.log(`[${timestamp}] [unregister] Refreshing digest before unregister...`);
             digestRef.current = await refreshDigest(siteRef.current);
             if (!digestRef.current) {
+              console.error(`[${timestamp}] [unregister] Failed to refresh digest`);
               throw new Error("Failed to refresh digest for unregister.");
             }
 
             const query = `${siteRef.current}/_api/web/lists/getbytitle('Registrations')/items` +
-                          `?$filter=EventLookupId eq ${unregId} and UserEmail eq '${userEmailRef.current.replace(/'/g, "''")}'` +
-                          `&$select=Id,EventLookupId/Id&$expand=EventLookupId`;
+                          `?$filter=EventLookupId eq ${eventId} and UserEmail eq '${userEmailRef.current.replace(/'/g, "''")}'` +
+                          `&$select=Id,EventLookupId/Id,Status,UserEmail&$expand=EventLookupId`;
             console.log(`[${timestamp}] [unregister] Query URL:`, query);
 
             const response = await $.ajax({
@@ -784,13 +811,18 @@
             });
             const reg = response.d?.results?.[0];
             if (!reg) {
-              console.warn(`[${timestamp}] [unregister] No registration found for Event ID:`, unregId);
+              console.warn(`[${timestamp}] [unregister] No registration found for Event ID:`, eventId, "User:", userEmailRef.current);
               alert("You are not registered for this event.");
               setLoading(false);
               return;
             }
 
-            console.log(`[${timestamp}] [unregister] Deleting registration ID:`, reg.Id);
+            console.log(`[${timestamp}] [unregister] Found registration ID:`, reg.Id, "Details:", {
+              EventLookupId: reg.EventLookupId?.Id,
+              Status: reg.Status,
+              UserEmail: reg.UserEmail
+            });
+
             await $.ajax({
               url: siteRef.current + "/_api/web/lists/getbytitle('Registrations')/items(" + reg.Id + ")",
               type: "POST",
@@ -802,19 +834,25 @@
               },
               timeout: 5000
             });
-            console.log(`[${timestamp}] [unregister] Registration deleted successfully for Event ID:`, unregId);
+            console.log(`[${timestamp}] [unregister] Registration deleted successfully for Event ID:`, eventId);
             await loadEvents();
             await loadMyRegs();
             alert("Registration cancelled successfully.");
             setLoading(false);
+            setUnregId(null); // Reset unregId after successful unregister
           } catch (xhr) {
-            console.error(`[${timestamp}] [unregister] Error unregistering for Event ID ${unregId}:`, xhr);
+            console.error(`[${timestamp}] [unregister] Error unregistering for Event ID ${eventId}:`, {
+              status: xhr.status,
+              statusText: xhr.statusText,
+              response: xhr.responseJSON || xhr.responseText
+            });
             let userMsg = "Failed to cancel registration.";
             if (xhr.status === 403) userMsg = "Access denied. Please check your permissions.";
-            if (xhr.status === 404) userMsg = "Registration not found.";
+            if (xhr.status === 404) userMsg = "Registration or list not found.";
             if (xhr.status === 400) userMsg = "Invalid request. Please check list settings.";
             handleError("Unregister", xhr, userMsg);
             setLoading(false);
+            setUnregId(null); // Reset unregId on error
           }
         };
 
@@ -928,17 +966,6 @@
         alert("Error: #root element not found in DOM. Check EventsDashboard.aspx.");
         return;
       }
-
-      $(document).on('click', '#confirmUnreg', () => {
-        const timestamp = new Date().toISOString();
-        console.log(`[${timestamp}] [confirmUnreg] Unregister button clicked`);
-        if (appInstance && typeof appInstance.unregister === 'function') {
-          appInstance.unregister();
-        } else {
-          console.error(`[${timestamp}] [confirmUnreg] appInstance.unregister is not a function`, appInstance);
-          alert("Error: Unable to cancel registration. Please check console for details.");
-        }
-      });
 
       const app = React.createElement(App);
       ReactDOM.render(app, root);
