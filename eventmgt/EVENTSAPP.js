@@ -28,9 +28,7 @@
         const digest = resp.d.GetContextWebInformation.FormDigestValue;
         console.log(`[${timestamp}] [API refreshDigest] Digest:`, digest.substring(0, 20) + "...");
         return digest;
-      }).catch(e => {
-        return this.handleError("refreshDigest", e, "Failed to refresh form digest.");
-      });
+      }).catch(e => this.handleError("refreshDigest", e, "Failed to refresh form digest."));
     },
 
     getContext() {
@@ -79,7 +77,7 @@
           let evs = (d.d?.results || []).map((ev, index) => {
             const startDate = ev.StartDate ? new Date(ev.StartDate) : null;
             const endDate = ev.EndDate ? new Date(ev.EndDate) : null;
-            console.log(`[${timestamp}] [API loadEvents] Event ${index + 1}:`, ev.Id, ev.Title);
+            console.log(`[${timestamp}] [API loadEvents] Event ${index + 1}:`, { Id: ev.Id, Title: ev.Title, StartDate: ev.StartDate });
             if (!ev.Id || !ev.Title || !startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
               console.warn(`[${timestamp}] [API loadEvents] Skipping invalid event:`, ev);
               return null;
@@ -322,9 +320,10 @@
           if (root) {
             root.innerHTML = '';
             ReactDOM.render(
-              React.createElement("div", { className: "alert alert-danger" }, "Render error. Check console."),
+              React.createElement("div", { className: "alert alert-danger" }, `Render error: ${error.message || "Unknown error"}`),
               root
             );
+            console.log(`[${timestamp}] [ErrorBoundary] Fallback UI rendered`);
           }
         }
       }, [error]);
@@ -338,7 +337,7 @@
 
     EventCards({ events, myRegs, search, register, showUnreg, refreshMyRegs }) {
       const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [EventCards] Rendering ${events.length} events`, { search });
+      console.log(`[${timestamp}] [EventCards] Rendering ${events.length} events`, { search, events: events.map(e => ({ Id: e.Id, Title: e.Title })) });
 
       const validEvents = events.filter(e => {
         const isValid = e &&
@@ -361,7 +360,7 @@
       console.log(`[${timestamp}] [EventCards] Filtered events:`, filtered.length);
 
       const cards = filtered.length ? filtered.map((ev, index) => {
-        console.log(`[${timestamp}] [EventCards] Processing event ${index + 1}:`, ev.Id, ev.Title);
+        console.log(`[${timestamp}] [EventCards] Processing event ${index + 1}:`, { Id: ev.Id, Title: ev.Title });
         try {
           const myReg = myRegs.find(r => r.EventLookupId === ev.Id);
           const isFull = ev.MaxSeats && ev.regCount >= ev.MaxSeats;
@@ -474,14 +473,6 @@
       }
     },
 
-    debounce(fn, ms) {
-      let timeout;
-      return (...args) => {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => fn(...args), ms);
-      };
-    },
-
     init() {
       $(document).ready(async () => {
         const timestamp = new Date().toISOString();
@@ -527,7 +518,7 @@
             const userEmailRef = React.useRef(ctx.userEmail);
             const digestRef = React.useRef(ctx.digest);
 
-            const renderApp = this.debounce(() => {
+            const renderApp = () => {
               const timestamp = new Date().toISOString();
               console.log(`[${timestamp}] [renderApp] Starting:`, { loading, events: events.length, myRegs: myRegs.length });
 
@@ -538,6 +529,11 @@
               root.innerHTML = '';
               root.style.display = 'block';
               root.style.visibility = 'visible';
+              console.log(`[${timestamp}] [renderApp] Root reset:`, {
+                display: root.style.display,
+                visibility: root.style.visibility,
+                computed: window.getComputedStyle(root).display
+              });
 
               $("#loading").hide();
               try {
@@ -557,12 +553,13 @@
                   console.log(`[${timestamp}] [renderApp] No events rendered`);
                   return;
                 }
+                console.log(`[${timestamp}] [renderApp] Attempting to render ${events.length} events`);
                 ReactDOM.render(
                   React.createElement(components.ErrorBoundary, null,
                     React.createElement("div", { className: "event-container" },
                       React.createElement(components.EventCards, {
-                        events,
-                        myRegs,
+                        events: [...events],
+                        myRegs: [...myRegs],
                         search,
                         register,
                         showUnreg,
@@ -578,22 +575,21 @@
                   ),
                   root
                 );
-                console.log(`[${timestamp}] [renderApp] Success:`, {
+                console.log(`[${timestamp}] [renderApp] Render completed:`, {
                   eventContainer: !!document.querySelector(".event-container"),
                   cards: document.querySelectorAll(".panel").length,
-                  modal: !!document.querySelector(".modal")
+                  modal: !!document.querySelector(".modal"),
+                  rootContentLength: document.getElementById('root').innerHTML.length
                 });
-                root.style.display = 'none';
-                root.offsetHeight;
-                root.style.display = 'block';
               } catch (e) {
                 console.error(`[${timestamp}] [renderApp] Failed:`, e);
                 ReactDOM.render(
-                  React.createElement("div", { className: "alert alert-danger" }, "Failed to render events. Check console."),
+                  React.createElement("div", { className: "alert alert-danger" }, `Failed to render events: ${e.message}`),
                   root
                 );
+                console.log(`[${timestamp}] [renderApp] Error fallback rendered`);
               }
-            }, 300);
+            };
 
             React.useEffect(() => {
               const timestamp = new Date().toISOString();
@@ -632,9 +628,10 @@
                   console.error(`[${timestamp}] [useEffect] Data load failed:`, e);
                   setLoading(false);
                   ReactDOM.render(
-                    React.createElement("div", { className: "alert alert-danger" }, e.message || "Failed to load data."),
+                    React.createElement("div", { className: "alert alert-danger" }, `Failed to load data: ${e.message}`),
                     root
                   );
+                  console.log(`[${timestamp}] [useEffect] Error fallback rendered`);
                 }
                 clearTimeout(timeout);
               };
@@ -646,7 +643,13 @@
 
             React.useEffect(() => {
               const timestamp = new Date().toISOString();
-              console.log(`[${timestamp}] [useEffect] State updated:`, { loading, events: events.length, myRegs: myRegs.length });
+              console.log(`[${timestamp}] [useEffect] State updated:`, {
+                loading,
+                events: events.length,
+                myRegs: myRegs.length,
+                showModal,
+                unregId
+              });
               renderApp();
             }, [loading, events, myRegs, showModal, unregId]);
 
@@ -782,9 +785,10 @@
           const root = document.getElementById('root');
           if (root) {
             ReactDOM.render(
-              React.createElement("div", { className: "alert alert-danger" }, "Failed to initialize app. Check console."),
+              React.createElement("div", { className: "alert alert-danger" }, `Failed to initialize app: ${e.message}`),
               root
             );
+            console.log(`[${timestamp}] [App Init] Error fallback rendered`);
           }
         }
       });
