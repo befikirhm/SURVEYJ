@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED REGISTRATION NOT SAVED, UI REFRESH ===
+// === SP 2016 ON-PREM – FIXED NO EVENTS FOUND, REGISTRATION NOT SAVED ===
 (function () {
   'use strict';
 
@@ -208,7 +208,7 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [loadEvents] STARTED`);
 
-          const q = "?$select=Id,Title,StartDate,EndDate,Location,Instructor,MaxSeats,AllowRegistration,IsOver,Attachments";
+          const q = "?$select=Id,Title,StartDate,EndDate,Location,Instructor/Title,MaxSeats,AllowRegistration,IsOver,Attachments&$expand=Instructor";
           const url = this.site + "/_api/web/lists/getbytitle('Events')/items" + q;
 
           $.ajax({
@@ -216,25 +216,29 @@
             headers: { Accept: "application/json; odata=verbose" },
             timeout: 15000,
             success: d => {
-              console.log(`[${timestamp}] [loadEvents] Events loaded:`, d.d?.results?.length || 0);
-
+              console.log(`[${timestamp}] [loadEvents] Raw response:`, d);
               try {
-                let evs = (d.d?.results || []).map(ev => ({
-                  Id: ev.Id,
-                  Title: ev.Title,
-                  StartTime: ev.StartDate,
-                  EndTime: ev.EndDate,
-                  Room: ev.Location,
-                  Instructor: { Title: ev.Instructor },
-                  MaxSeats: ev.MaxSeats,
-                  AllowRegistration: ev.AllowRegistration,
-                  IsOver: ev.IsOver,
-                  Attachments: ev.Attachments,
-                  regCount: 0
-                })).sort((a, b) => new Date(a.StartTime) - new Date(b.EndTime));
+                let evs = (d.d?.results || []).map(ev => {
+                  console.log(`[${timestamp}] [loadEvents] Processing event:`, ev.Id, ev.Title);
+                  return {
+                    Id: ev.Id,
+                    Title: ev.Title || "Untitled Event",
+                    StartTime: ev.StartDate,
+                    EndTime: ev.EndDate,
+                    Room: ev.Location || "TBD",
+                    Instructor: { Title: ev.Instructor?.Title || "TBD" },
+                    MaxSeats: ev.MaxSeats || null,
+                    AllowRegistration: ev.AllowRegistration === true || ev.AllowRegistration === "1",
+                    IsOver: ev.IsOver === true || ev.IsOver === "1",
+                    Attachments: ev.Attachments || false,
+                    regCount: 0
+                  };
+                }).sort((a, b) => new Date(a.StartTime) - new Date(b.EndTime));
+
+                console.log(`[${timestamp}] [loadEvents] Events processed:`, evs.length, evs);
 
                 if (evs.length === 0) {
-                  console.log(`[${timestamp}] [loadEvents] No events found`);
+                  console.log(`[${timestamp}] [loadEvents] No events found in response`);
                   this.setState({ events: [], loading: false }, () => {
                     $("#loading").hide();
                     this.renderCards();
@@ -244,7 +248,7 @@
 
                 Promise.all(evs.map(e => this.getRegCount(e.Id).then(c => ({ ...e, regCount: c }))))
                   .then(processed => {
-                    console.log(`[${timestamp}] [loadEvents] Events processed:`, processed.length);
+                    console.log(`[${timestamp}] [loadEvents] Events with reg counts:`, processed.length);
                     this.setState({ events: processed, loading: false }, () => {
                       $("#loading").hide();
                       this.renderCards();
@@ -258,14 +262,24 @@
                     });
                   });
               } catch (err) {
-                handleError("Parse Events", err, "Failed to parse events.");
+                handleError("Parse Events", err, "Failed to parse events data. Check list columns or response format.");
               }
             },
             error: xhr => {
-              let msg = "Failed to load events.";
-              if (xhr.status === 404) msg = "List 'Events' not found.";
-              if (xhr.status === 403) msg = "Access denied.";
+              console.error(`[${timestamp}] [loadEvents] Failed to load events:`, {
+                status: xhr.status,
+                statusText: xhr.statusText,
+                response: xhr.responseJSON || xhr.responseText
+              });
+              let msg = "Failed to load events. Please check list settings or permissions.";
+              if (xhr.status === 404) msg = "List 'Events' not found. Verify list name.";
+              if (xhr.status === 403) msg = "Access denied to Events list. Contact your administrator.";
+              if (xhr.status === 400) msg = "Invalid query. Check column names in Events list.";
               handleError("Load Events", xhr, msg);
+              this.setState({ events: [], loading: false }, () => {
+                $("#loading").hide();
+                this.renderCards();
+              });
             }
           });
         }
@@ -296,6 +310,7 @@
               headers: { Accept: "application/json; odata=verbose" },
               timeout: 20000,
               success: d => {
+                console.log(`[${timestamp}] [loadMyRegs] Raw response:`, d);
                 try {
                   const registrations = (d.d?.results || []).map(r => {
                     const eventLookupId = r.EventLookupId?.Id || r.EventLookupId;
@@ -445,6 +460,7 @@
             } catch (err) {
               console.error(`[${timestamp}] [register] loadMyRegs failed:`, err);
               alert("Failed to load registrations. Please try again.");
+              this.setState({ loading: false }, () => this.renderCards());
               return;
             }
 
@@ -452,6 +468,7 @@
             if (localReg) {
               console.log(`[${timestamp}] [register] Found in local state for Event ID ${id}:`, localReg);
               alert("You are already " + (localReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${localReg.WaitlistPosition})`));
+              this.setState({ loading: false }, () => this.renderCards());
               return;
             }
             console.log(`[${timestamp}] [register] No local registration found`);
@@ -461,6 +478,7 @@
             if (existingReg) {
               console.log(`[${timestamp}] [register] Already registered via REST for Event ID ${id}:`, existingReg);
               alert("You are already " + (existingReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${existingReg.WaitlistPosition})`));
+              this.setState({ loading: false }, () => this.renderCards());
               return;
             }
             console.log(`[${timestamp}] [register] No existing registration via REST`);
@@ -475,6 +493,7 @@
             if (!this.digest) {
               console.error(`[${timestamp}] [register] Failed to refresh digest`);
               alert("Failed to refresh form digest. Please try again.");
+              this.setState({ loading: false }, () => this.renderCards());
               return;
             }
 
@@ -490,13 +509,10 @@
               } else {
                 console.log(`[${timestamp}] [register] User declined waitlist for Event ID:`, id);
                 alert("Waitlist registration cancelled.");
+                this.setState({ loading: false }, () => this.renderCards());
                 return;
               }
             }
-
-            // Ensure UI refresh after successful registration
-            console.log(`[${timestamp}] [register] Triggering UI refresh...`);
-            this.setState({ loading: false }, () => this.renderCards());
           } catch (err) {
             console.error(`[${timestamp}] [register] Unexpected error in registration:`, err);
             handleError("Register", err, "Failed to process registration. Please check permissions or list settings.");
@@ -520,8 +536,8 @@
           try {
             const eventExists = this.state.events.some(e => e.Id === id);
             if (!eventExists) {
-              console.error(`[${timestamp}] [createReg] Event ID ${id} does not exist in Events list`);
-              throw new Error(`Event ID ${id} not found.`);
+              console.error(`[${timestamp}] [createReg] Event ID ${id} does not exist in state`);
+              throw new Error(`Event ID ${id} not found in loaded events.`);
             }
 
             if (!this.userEmail || this.userEmail === 'unknown') {
@@ -533,7 +549,7 @@
             const validEvent = await this.validateEventId(id);
             if (!validEvent) {
               console.error(`[${timestamp}] [createReg] Invalid Event ID ${id} in Events list`);
-              throw new Error(`Event ID ${id} does not exist.`);
+              throw new Error(`Event ID ${id} does not exist in Events list.`);
             }
 
             // Ensure fresh digest
@@ -548,7 +564,7 @@
               type: "POST",
               data: JSON.stringify({
                 '__metadata': { type: 'SP.Data.RegistrationsListItem' },
-                EventLookupIdId: id, // SP 2016 lookup field
+                EventLookupIdId: id,
                 UserEmail: this.userEmail,
                 Status: status,
                 WaitlistPosition: pos !== null ? pos : null,
@@ -677,6 +693,7 @@
             if (!reg) {
               console.warn(`[${timestamp}] [unregister] No registration found for Event ID:`, id);
               alert("You are not registered for this event.");
+              this.setState({ loading: false }, () => this.renderCards());
               return;
             }
 
@@ -770,7 +787,7 @@
                 React.createElement("div", { className: "panel-footer text-right" }, btn)
               )
             );
-          }) : [React.createElement("div", { key: "no", className: "alert alert-info" }, "No events found.")];
+          }) : [React.createElement("div", { key: "no", className: "alert alert-info" }, "No events found. Please check Events list or permissions.")];
 
           console.log(`[${timestamp}] [renderCards] Rendering ${cards.length} cards`);
           ReactDOM.render(React.createElement("div", { className: "row" }, cards), document.getElementById("root"));
