@@ -79,3 +79,9 @@
     }
   </style>
 </asp:Content>
+<script src="https://unpkg.com/survey-core/survey.core.min.js"></script>
+<script src="https://unpkg.com/survey-creator-core/survey-creator-core.min.js"></script>
+<script src="https://unpkg.com/survey-creator-knockout/survey-creator-knockout.min.js"></script>
+<script src="https://unpkg.com/survey-knockout/survey.min.js"></script>
+<link href="https://unpkg.com/survey-core/defaultV2.min.css" rel="stylesheet">
+<link href="https://unpkg.com/survey-creator-core/survey-creator-core.min.css" rel="stylesheet">
