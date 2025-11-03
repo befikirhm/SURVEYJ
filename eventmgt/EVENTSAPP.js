@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED MY REGISTRATIONS + TITLE + EVENTLOOKUPID EXPANSION ===
+// === SP 2016 ON-PREM – FIXED REGISTRATION + EVENTLOOKUPID EXPANSION + TITLE ===
 (function () {
   'use strict';
 
@@ -131,9 +131,7 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [componentDidMount] Initializing component...`);
           this.site = ctx.site;
-          this.userEmail = ctx
-
-.userEmail;
+          this.userEmail = ctx.userEmail;
           this.digest = ctx.digest;
 
           $('#searchBox').on('input', this.handleSearch);
@@ -376,63 +374,79 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [register] Attempting registration for Event ID:`, id);
 
-          // Validate Event ID
-          if (!Number.isInteger(id) || id <= 0) {
-            console.error(`[${timestamp}] [register] Invalid Event ID:`, id);
-            alert("Invalid event ID.");
-            return;
-          }
+          try {
+            // Validate Event ID
+            if (!Number.isInteger(id) || id <= 0) {
+              console.error(`[${timestamp}] [register] Invalid Event ID:`, id);
+              alert("Invalid event ID.");
+              return;
+            }
+            console.log(`[${timestamp}] [register] Event ID validated:`, id);
 
-          const ev = this.state.events.find(e => e.Id === id);
-          if (!ev || !ev.AllowRegistration) {
-            console.warn(`[${timestamp}] [register] Registration closed for Event ID:`, id);
-            alert("Registration closed");
-            return;
-          }
+            const ev = this.state.events.find(e => e.Id === id);
+            if (!ev) {
+              console.error(`[${timestamp}] [register] Event not found for ID:`, id);
+              alert("Event not found.");
+              return;
+            }
+            if (!ev.AllowRegistration) {
+              console.warn(`[${timestamp}] [register] Registration closed for Event ID:`, id);
+              alert("Registration closed.");
+              return;
+            }
+            console.log(`[${timestamp}] [register] Event validated:`, ev.Title);
 
-          // Force refresh myRegs
-          console.log(`[${timestamp}] [register] Refreshing my registrations...`);
-          await this.loadMyRegs();
+            // Force refresh myRegs
+            console.log(`[${timestamp}] [register] Refreshing my registrations...`);
+            await this.loadMyRegs();
+            console.log(`[${timestamp}] [register] My registrations refreshed`);
 
-          // Check local state
-          const localReg = this.state.myRegs.find(r => r.EventLookupId === ev.Id);
-          if (localReg) {
-            console.log(`[${timestamp}] [register] Found in local state for Event ID ${id}:`, localReg);
-            alert("You are already " + (localReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${localReg.WaitlistPosition})`));
-            return;
-          }
+            // Check local state
+            const localReg = this.state.myRegs.find(r => r.EventLookupId === ev.Id);
+            if (localReg) {
+              console.log(`[${timestamp}] [register] Found in local state for Event ID ${id}:`, localReg);
+              alert("You are already " + (localReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${localReg.WaitlistPosition})`));
+              return;
+            }
+            console.log(`[${timestamp}] [register] No local registration found`);
 
-          // Double-check with REST
-          console.log(`[${timestamp}] [register] Double-checking via REST...`);
-          const existingReg = await this.checkExistingRegistration(id);
-          if (existingReg) {
-            console.log(`[${timestamp}] [register] Already registered via REST for Event ID ${id}:`, existingReg);
-            alert("You are already " + (existingReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${existingReg.WaitlistPosition})`));
-            return;
-          }
+            // Double-check with REST
+            console.log(`[${timestamp}] [register] Double-checking via REST...`);
+            const existingReg = await this.checkExistingRegistration(id);
+            if (existingReg) {
+              console.log(`[${timestamp}] [register] Already registered via REST for Event ID ${id}:`, existingReg);
+              alert("You are already " + (existingReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${existingReg.WaitlistPosition})`));
+              return;
+            }
+            console.log(`[${timestamp}] [register] No existing registration via REST`);
 
-          console.log(`[${timestamp}] [register] No existing registration. Checking seat availability...`);
-          this.getRegCount(id).then(count => {
+            // Check seat availability
+            console.log(`[${timestamp}] [register] Checking seat availability...`);
+            const count = await this.getRegCount(id);
             const full = ev.MaxSeats && count >= ev.MaxSeats;
             console.log(`[${timestamp}] [register] Event ID ${id} - Seats: ${count}/${ev.MaxSeats || 'Unlimited'}, Full: ${full}`);
+
             if (!full) {
               console.log(`[${timestamp}] [register] Creating confirmed registration...`);
-              this.createReg(id, 'Confirmed', null, ev.Title);
+              await this.createReg(id, 'Confirmed', null, ev.Title);
             } else {
-              this.getNextWaitlistPosition(id).then(pos => {
-                console.log(`[${timestamp}] [register] Event full. Offering waitlist position:`, pos);
-                if (confirm(`Event full. Join waitlist #${pos}?`)) {
-                  console.log(`[${timestamp}] [register] Creating waitlist registration...`);
-                  this.createReg(id, 'Waitlisted', pos, ev.Title);
-                } else {
-                  console.log(`[${timestamp}] [register] User declined waitlist for Event ID:`, id);
-                }
-              });
+              const pos = await this.getNextWaitlistPosition(id);
+              console.log(`[${timestamp}] [register] Event full. Offering waitlist position:`, pos);
+              if (confirm(`Event full. Join waitlist #${pos}?`)) {
+                console.log(`[${timestamp}] [register] Creating waitlist registration...`);
+                await this.createReg(id, 'Waitlisted', pos, ev.Title);
+              } else {
+                console.log(`[${timestamp}] [register] User declined waitlist for Event ID:`, id);
+                alert("Waitlist registration cancelled.");
+              }
             }
-          });
+          } catch (err) {
+            console.error(`[${timestamp}] [register] Unexpected error in registration:`, err);
+            handleError("Register", err, "Failed to process registration. Please try again.");
+          }
         }
 
-        createReg(id, status, pos, title, retryCount = 0) {
+        async createReg(id, status, pos, title, retryCount = 0) {
           const maxRetries = 2;
           const timestamp = new Date().toISOString();
           const registrationDate = new Date().toISOString();
@@ -445,51 +459,56 @@
             retryCount
           });
 
-          $.ajax({
-            url: this.site + "/_api/web/lists/getbytitle('Registrations')/items",
-            type: "POST",
-            data: JSON.stringify({
-              '__metadata': { type: 'SP.Data.RegistrationsListItem' },
-              EventLookupId: id,
-              UserEmail: this.userEmail,
-              Status: status,
-              WaitlistPosition: pos,
-              Title: title,
-              RegistrationDate: registrationDate
-            }),
-            headers: {
-              Accept: "application/json; odata=verbose",
-              "X-RequestDigest": this.digest,
-              "Content-Type": "application/json; odata=verbose"
-            },
-            success: () => {
-              console.log(`[${timestamp}] [createReg] Registration created successfully for Event ID:`, id);
-              alert(status === 'Confirmed' ? 'Registered!' : `Waitlist #${pos}`);
-              this.loadEvents();
-              this.loadMyRegs();
-            },
-            error: xhr => {
-              const msg = xhr.responseJSON?.error?.message?.value || "Registration failed";
-              console.error(`[${timestamp}] [createReg] Error for Event ID ${id}:`, msg);
+          try {
+            const response = await $.ajax({
+              url: this.site + "/_api/web/lists/getbytitle('Registrations')/items",
+              type: "POST",
+              data: JSON.stringify({
+                '__metadata': { type: 'SP.Data.RegistrationsListItem' },
+                EventLookupId: id,
+                UserEmail: this.userEmail,
+                Status: status,
+                WaitlistPosition: pos,
+                Title: title,
+                RegistrationDate: registrationDate
+              }),
+              headers: {
+                Accept: "application/json; odata=verbose",
+                "X-RequestDigest": this.digest,
+                "Content-Type": "application/json; odata=verbose"
+              },
+              timeout: 10000
+            });
+            console.log(`[${timestamp}] [createReg] Registration created successfully for Event ID ${id}:`, response);
+            alert(status === 'Confirmed' ? 'Registered successfully!' : `Added to waitlist #${pos}`);
+            await this.loadEvents();
+            await this.loadMyRegs();
+          } catch (xhr) {
+            const msg = xhr.responseJSON?.error?.message?.value || "Registration failed";
+            console.error(`[${timestamp}] [createReg] Error for Event ID ${id}:`, msg, {
+              status: xhr.status,
+              statusText: xhr.statusText,
+              response: xhr.responseJSON || xhr.responseText
+            });
 
-              if (msg.includes("A list item with ID") && retryCount < maxRetries) {
-                console.log(`[${timestamp}] [createReg] Duplicate error detected. Retrying (${retryCount + 1}/${maxRetries})...`);
-                this.loadMyRegs().then(() => {
-                  this.checkExistingRegistration(id).then(existingReg => {
-                    if (existingReg) {
-                      console.log(`[${timestamp}] [createReg] Confirmed existing registration on retry:`, existingReg);
-                      alert("You are already " + (existingReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${existingReg.WaitlistPosition})`));
-                    } else {
-                      console.log(`[${timestamp}] [createReg] No existing registration on retry. Attempting again...`);
-                      this.createReg(id, status, pos, title, retryCount + 1);
-                    }
-                  });
-                });
+            if (msg.includes("A list item with ID") && retryCount < maxRetries) {
+              console.log(`[${timestamp}] [createReg] Duplicate error detected. Retrying (${retryCount + 1}/${maxRetries})...`);
+              await this.loadMyRegs();
+              const existingReg = await this.checkExistingRegistration(id);
+              if (existingReg) {
+                console.log(`[${timestamp}] [createReg] Confirmed existing registration on retry:`, existingReg);
+                alert("You are already " + (existingReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${existingReg.WaitlistPosition})`));
               } else {
-                handleError("Create Registration", xhr, `Failed to register: ${msg}`);
+                console.log(`[${timestamp}] [createReg] No existing registration on retry. Attempting again...`);
+                await this.createReg(id, status, pos, title, retryCount + 1);
               }
+            } else {
+              let userMsg = `Failed to register: ${msg}`;
+              if (xhr.status === 403) userMsg = "Access denied. Please check your permissions.";
+              if (xhr.status === 400) userMsg = "Invalid request. Please check list settings.";
+              handleError("Create Registration", xhr, userMsg);
             }
-          });
+          }
         }
 
         getNextWaitlistPosition(id) {
@@ -520,44 +539,47 @@
           $("#unregModal").modal("show");
         }
 
-        unregister() {
+        async unregister() {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [unregister] Unregistering for Event ID:`, this.state.unregId);
 
           const id = this.state.unregId;
           $("#unregModal").modal("hide");
 
-          $.ajax({
-            url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and UserEmail eq '" + encodeURIComponent(this.userEmail) + "'",
-            headers: { Accept: "application/json; odata=verbose" },
-            success: d => {
-              const reg = d.d?.results?.[0];
-              if (!reg) {
-                console.warn(`[${timestamp}] [unregister] No registration found for Event ID:`, id);
-                alert("Not registered.");
-                return;
-              }
+          try {
+            const query = this.site + "/_api/web/lists/getbytitle('Registrations')/items" +
+                          "?$filter=EventLookupId eq " + id + " and UserEmail eq );
 
-              console.log(`[${timestamp}] [unregister] Deleting registration ID:`, reg.Id);
-              $.ajax({
-                url: this.site + "/_api/web/lists/getbytitle('Registrations')/items(" + reg.Id + ")",
-                type: "POST",
-                headers: { "X-RequestDigest": this.digest, "If-Match": "*", "X-HTTP-Method": "DELETE" },
-                success: () => {
-                  console.log(`[${timestamp}] [unregister] Registration deleted for Event ID:`, id);
-                  alert("Cancelled");
-                  this.loadEvents();
-                  this.loadMyRegs();
-                },
-                error: xhr => {
-                  handleError("Unregister", xhr, "Failed to cancel registration.");
-                }
-              });
-            },
-            error: xhr => {
-              handleError("Find Registration to Unregister", xhr, "Failed to find registration to cancel.");
+            const response = await $.ajax({
+              url: query,
+              headers: { Accept: "application/json; odata=verbose" }
+            });
+            const reg = response.d?.results?.[0];
+            if (!reg) {
+              console.warn(`[${timestamp}] [unregister] No registration found for Event ID:`, id);
+              alert("You are not registered for this event.");
+              return;
             }
-          });
+
+            console.log(`[${timestamp}] [unregister] Deleting registration ID:`, reg.Id);
+            await $.ajax({
+              url: this.site + "/_api/web/lists/getbytitle('Registrations')/items(" + reg.Id + ")",
+              type: "POST",
+              headers: {
+                "X-RequestDigest": this.digest,
+                "If-Match": "*",
+                "X-HTTP-Method": "DELETE"
+              },
+              timeout: 5000
+            });
+            console.log(`[${timestamp}] [unregister] Registration deleted for Event ID:`, id);
+            alert("Registration cancelled successfully.");
+            await this.loadEvents();
+            await this.loadMyRegs();
+          } catch (xhr) {
+            console.error(`[${timestamp}] [unregister] Error unregistering for Event ID ${id}:`, xhr);
+            handleError("Unregister", xhr, "Failed to cancel registration. Please check permissions or list settings.");
+          }
         }
 
         renderCards() {
@@ -604,9 +626,7 @@
               );
             } else {
               btn = React.createElement("div", null,
-                React.createElement("button", { className: "btn btn-success btn-sm", onClick: () => this.register(ev.Id) },
-                  isFull ? "Join Waitlist" : "Register"
-                ),
+                React.createElement("button", { className: "btn btn-success btn-sm", onClick: () => this.register(ev.Id) }, isFull ? "Join Waitlist" : "Register"),
                 React.createElement("button", { className: "btn btn-info btn-sm", onClick: () => this.refreshMyRegs() }, "Refresh")
               );
             }
