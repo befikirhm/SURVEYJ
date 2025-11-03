@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED LOADING ISSUE, FUNCTIONAL COMPONENT ===
+// === SP 2016 ON-PREM – FIXED LOADING STATE ISSUE, FUNCTIONAL COMPONENT ===
 (function () {
   'use strict';
 
@@ -134,12 +134,26 @@
         const userEmailRef = React.useRef(ctx.userEmail);
         const digestRef = React.useRef(ctx.digest);
 
-        // useEffect for rendering cards when state changes
+        // useEffect for rendering cards when loading changes
         React.useEffect(() => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [useEffect] State changed, rendering cards:`, { events: events.length, search, loading });
-          renderCards();
-        }, [events, search, myRegs, loading]);
+          console.log(`[${timestamp}] [useEffect] Loading state changed:`, loading);
+          if (!loading) {
+            setTimeout(() => {
+              console.log(`[${timestamp}] [useEffect] Triggering renderCards after loading change`);
+              renderCards();
+            }, 0); // Ensure state update propagates
+          }
+        }, [loading]);
+
+        // useEffect for rendering cards when events or search change
+        React.useEffect(() => {
+          const timestamp = new Date().toISOString();
+          console.log(`[${timestamp}] [useEffect] Events or search changed:`, { events: events.length, search, myRegs: myRegs.length });
+          if (!loading) {
+            renderCards();
+          }
+        }, [events, search, myRegs]);
 
         // useEffect for componentDidMount
         React.useEffect(() => {
@@ -178,14 +192,12 @@
                 console.log(`[${timestamp}] [useEffect] All data loaded, clearing timeout`);
                 clearTimeout(timeout);
                 setLoading(false);
-                renderCards();
               })
               .catch(err => {
                 console.error(`[${timestamp}] [useEffect] Error loading data:`, err);
                 clearTimeout(timeout);
                 setLoading(false);
                 handleError("Load Data", err, "Failed to load events or registrations.");
-                renderCards();
               });
           });
 
@@ -399,7 +411,6 @@
           setLoading(true);
           loadMyRegs().then(() => {
             setLoading(false);
-            renderCards();
           });
         };
 
@@ -469,7 +480,6 @@
               console.error(`[${timestamp}] [register] Invalid Event ID:`, id);
               alert("Invalid event ID.");
               setLoading(false);
-              renderCards();
               return;
             }
             console.log(`[${timestamp}] [register] Event ID validated:`, id);
@@ -479,14 +489,12 @@
               console.error(`[${timestamp}] [register] Event not found for ID:`, id);
               alert("Event not found.");
               setLoading(false);
-              renderCards();
               return;
             }
             if (!ev.AllowRegistration) {
               console.warn(`[${timestamp}] [register] Registration closed for Event ID:`, id);
               alert("Registration closed.");
               setLoading(false);
-              renderCards();
               return;
             }
             console.log(`[${timestamp}] [register] Event validated:`, ev.Title);
@@ -495,7 +503,6 @@
               console.error(`[${timestamp}] [register] Invalid userEmail:`, userEmailRef.current);
               alert("Invalid user email. Cannot proceed with registration.");
               setLoading(false);
-              renderCards();
               return;
             }
 
@@ -508,7 +515,6 @@
               console.error(`[${timestamp}] [register] loadMyRegs failed:`, err);
               handleError("Load My Registrations in Register", err, "Failed to load registrations. Please try again.");
               setLoading(false);
-              renderCards();
               return;
             }
 
@@ -517,7 +523,6 @@
               console.log(`[${timestamp}] [register] Found in local state for Event ID ${id}:`, localReg);
               alert("You are already " + (localReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${localReg.WaitlistPosition})`));
               setLoading(false);
-              renderCards();
               return;
             }
             console.log(`[${timestamp}] [register] No local registration found`);
@@ -528,7 +533,6 @@
               console.log(`[${timestamp}] [register] Already registered via REST for Event ID ${id}:`, existingReg);
               alert("You are already " + (existingReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${existingReg.WaitlistPosition})`));
               setLoading(false);
-              renderCards();
               return;
             }
             console.log(`[${timestamp}] [register] No existing registration via REST`);
@@ -544,7 +548,6 @@
               console.error(`[${timestamp}] [register] Failed to refresh digest`);
               alert("Failed to refresh form digest. Please try again.");
               setLoading(false);
-              renderCards();
               return;
             }
 
@@ -561,7 +564,6 @@
                 console.log(`[${timestamp}] [register] User declined waitlist for Event ID:`, id);
                 alert("Waitlist registration cancelled.");
                 setLoading(false);
-                renderCards();
                 return;
               }
             }
@@ -569,7 +571,6 @@
             console.error(`[${timestamp}] [register] Unexpected error in registration:`, err);
             handleError("Register", err, "Failed to process registration. Please check permissions or list settings.");
             setLoading(false);
-            renderCards();
           }
         };
 
@@ -634,7 +635,6 @@
             await loadEvents();
             await loadMyRegs();
             setLoading(false);
-            renderCards();
           } catch (xhr) {
             const msg = xhr.responseJSON?.error?.message?.value || "Registration failed";
             console.error(`[${timestamp}] [createReg] Error for Event ID ${id}:`, msg, {
@@ -651,7 +651,6 @@
                 console.log(`[${timestamp}] [createReg] Confirmed existing registration on retry:`, existingReg);
                 alert("You are already " + (existingReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${existingReg.WaitlistPosition})`));
                 setLoading(false);
-                renderCards();
               } else {
                 console.log(`[${timestamp}] [createReg] No existing registration on retry. Attempting again...`);
                 await createReg(id, status, pos, title, retryCount + 1);
@@ -664,7 +663,6 @@
               if (xhr.status === 409) userMsg = "Duplicate registration detected. Please check existing registrations.";
               handleError("Create Registration", xhr, userMsg);
               setLoading(false);
-              renderCards();
             }
           }
         };
@@ -750,7 +748,6 @@
               console.warn(`[${timestamp}] [unregister] No registration found for Event ID:`, unregId);
               alert("You are not registered for this event.");
               setLoading(false);
-              renderCards();
               return;
             }
 
@@ -771,7 +768,6 @@
             await loadMyRegs();
             alert("Registration cancelled successfully.");
             setLoading(false);
-            renderCards();
           } catch (xhr) {
             console.error(`[${timestamp}] [unregister] Error unregistering for Event ID ${unregId}:`, xhr);
             let userMsg = "Failed to cancel registration.";
@@ -780,13 +776,12 @@
             if (xhr.status === 400) userMsg = "Invalid request. Please check list settings.";
             handleError("Unregister", xhr, userMsg);
             setLoading(false);
-            renderCards();
           }
         };
 
         const renderCards = () => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [renderCards] Rendering event cards...`, { events: events.length, search, loading });
+          console.log(`[${timestamp}] [renderCards] Rendering event cards...`, { events: events.length, search, loading, myRegs: myRegs.length });
 
           const root = document.getElementById('root');
           if (!root) {
@@ -799,7 +794,12 @@
 
           if (loading) {
             console.log(`[${timestamp}] [renderCards] Still loading, rendering loading state`);
-            ReactDOM.render(React.createElement("div", { className: "alert alert-info" }, "Loading events..."), root);
+            try {
+              ReactDOM.render(React.createElement("div", { className: "alert alert-info" }, "Loading events..."), root);
+            } catch (e) {
+              console.error(`[${timestamp}] [renderCards] ReactDOM.render failed for loading state:`, e);
+              handleError("Render Loading State", e, "Failed to render loading state.");
+            }
             return;
           }
 
