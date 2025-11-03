@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED LOADMYREGS FAILURE + REGISTRATION ===
+// === SP 2016 ON-PREM – FIXED QUERY STRING IN LOADMYREGS + REGISTRATION ===
 (function () {
   'use strict';
 
@@ -275,9 +275,19 @@
           console.log(`[${timestamp}] [loadMyRegs] Loading user registrations for:`, this.userEmail);
 
           return new Promise((resolve, reject) => {
-            // Simplified query for SP 2016 compatibility
+            if (!this.userEmail || this.userEmail === 'unknown') {
+              console.error(`[${timestamp}] [loadMyRegs] Invalid userEmail:`, this.userEmail);
+              handleError("Load My Registrations", new Error("Invalid user email"), "Cannot load registrations due to invalid user email.");
+              this.setState({ myRegs: [] }, () => {
+                this.renderCards();
+                resolve([]);
+              });
+              return;
+            }
+
+            // Fixed query string with proper single quotes
             const query = `${this.site}/_api/web/lists/getbytitle('Registrations')/items` +
-                          `?$filter=UserEmail eq '${encodeURIComponent(this.userEmail)}'` +
+                          `?$filter=UserEmail eq '${this.userEmail.replace(/'/g, "''")}'` +
                           `&$select=Id,EventLookupId,Status,WaitlistPosition,Title,RegistrationDate,EventLookupId/Id` +
                           `&$expand=EventLookupId`;
             console.log(`[${timestamp}] [loadMyRegs] Query URL:`, query);
@@ -285,7 +295,7 @@
             $.ajax({
               url: query,
               headers: { Accept: "application/json; odata=verbose" },
-              timeout: 20000, // Increased timeout for slow servers
+              timeout: 20000, // Increased timeout
               success: d => {
                 try {
                   const registrations = (d.d?.results || []).map(r => {
@@ -305,14 +315,14 @@
                   console.log(`[${timestamp}] [loadMyRegs] My registrations loaded:`, registrations.length, registrations);
                   this.setState({ myRegs: registrations }, () => {
                     this.renderCards();
-                    resolve(registrations); // Return registrations for consistency
+                    resolve(registrations);
                   });
                 } catch (e) {
                   console.error(`[${timestamp}] [loadMyRegs] Error parsing registrations:`, e);
                   handleError("Parse Registrations", e, "Failed to parse user registrations.");
                   this.setState({ myRegs: [] }, () => {
                     this.renderCards();
-                    resolve([]); // Resolve with empty array on error
+                    resolve([]);
                   });
                 }
               },
@@ -326,11 +336,11 @@
                 let userMsg = "Failed to load your registrations. Please check permissions or list settings.";
                 if (xhr.status === 403) userMsg = "Access denied to Registrations list. Contact your administrator.";
                 if (xhr.status === 404) userMsg = "Registrations list not found. Verify list name.";
-                if (xhr.status === 400) userMsg = "Invalid query. Check UserEmail or EventLookupId.";
+                if (xhr.status === 400) userMsg = "Invalid query. Check UserEmail or EventLookupId configuration.";
                 handleError("Load My Registrations", xhr, userMsg);
                 this.setState({ myRegs: [] }, () => {
                   this.renderCards();
-                  resolve([]); // Always resolve to prevent hang
+                  resolve([]);
                 });
               }
             });
@@ -369,9 +379,15 @@
           console.log(`[${timestamp}] [checkExistingRegistration] Checking registration for Event ID:`, id, "User:", this.userEmail);
 
           return new Promise(resolve => {
-            const query = this.site + "/_api/web/lists/getbytitle('Registrations')/items" +
-                          "?$filter=EventLookupId eq " + id + " and UserEmail eq '" + encodeURIComponent(this.userEmail) + "'" +
-                          "&$select=Id,Status,WaitlistPosition,Title,EventLookupId/Id&$expand=EventLookupId";
+            if (!this.userEmail || this.userEmail === 'unknown') {
+              console.warn(`[${timestamp}] [checkExistingRegistration] Invalid userEmail:`, this.userEmail);
+              resolve(null);
+              return;
+            }
+
+            const query = `${this.site}/_api/web/lists/getbytitle('Registrations')/items` +
+                          `?$filter=EventLookupId eq ${id} and UserEmail eq '${this.userEmail.replace(/'/g, "''")}'` +
+                          `&$select=Id,Status,WaitlistPosition,Title,EventLookupId/Id&$expand=EventLookupId`;
             console.log(`[${timestamp}] [checkExistingRegistration] Query URL:`, query);
 
             $.ajax({
@@ -415,6 +431,11 @@
               return;
             }
             console.log(`[${timestamp}] [register] Event validated:`, ev.Title);
+
+            if (!this.userEmail || this.userEmail === 'unknown') {
+              console.error(`[${timestamp}] [register] Invalid userEmail:`, this.userEmail);
+              throw new Error("Invalid user email. Cannot proceed with registration.");
+            }
 
             console.log(`[${timestamp}] [register] Before loadMyRegs...`);
             const myRegs = await this.loadMyRegs().catch(err => {
@@ -585,9 +606,9 @@
               throw new Error("Failed to refresh digest for unregister.");
             }
 
-            const query = this.site + "/_api/web/lists/getbytitle('Registrations')/items" +
-                          "?$filter=EventLookupId eq " + id + " and UserEmail eq '" + encodeURIComponent(this.userEmail) + "'" +
-                          "&$select=Id,EventLookupId/Id&$expand=EventLookupId";
+            const query = `${this.site}/_api/web/lists/getbytitle('Registrations')/items` +
+                          `?$filter=EventLookupId eq ${id} and UserEmail eq '${this.userEmail.replace(/'/g, "''")}'` +
+                          `&$select=Id,EventLookupId/Id&$expand=EventLookupId`;
             console.log(`[${timestamp}] [unregister] Query URL:`, query);
 
             const response = await $.ajax({
