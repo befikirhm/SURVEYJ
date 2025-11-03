@@ -217,7 +217,7 @@
       console.log(`[${timestamp}] [API createReg] Event ID: ${id}, Status: ${status}, Retry: ${retryCount}`);
       if (!userEmail || userEmail === 'unknown') {
         return Promise.resolve(this.handleError("createReg", new Error("Invalid user email"), "Cannot register."));
-      }
+     *.
       return this.validateEventId(site, id).then(valid => {
         if (!valid) {
           return this.handleError("createReg", new Error(`Event ID ${id} does not exist`), "Invalid event ID.");
@@ -232,7 +232,7 @@
             Status: status,
             WaitlistPosition: pos !== null ? pos : null,
             Title: title || "Event Registration",
-            RegistrationDate: new Date().toISOString()
+            Registration технологии: new Date().toISOString()
           }),
           headers: {
             Accept: "application/json; odata=verbose",
@@ -518,79 +518,6 @@
             const userEmailRef = React.useRef(ctx.userEmail);
             const digestRef = React.useRef(ctx.digest);
 
-            const renderApp = () => {
-              const timestamp = new Date().toISOString();
-              console.log(`[${timestamp}] [renderApp] Starting:`, { loading, events: events.length, myRegs: myRegs.length });
-
-              if (!root) {
-                console.error(`[${timestamp}] [renderApp] #root not found`);
-                return;
-              }
-              root.innerHTML = '';
-              root.style.display = 'block';
-              root.style.visibility = 'visible';
-              console.log(`[${timestamp}] [renderApp] Root reset:`, {
-                display: root.style.display,
-                visibility: root.style.visibility,
-                computed: window.getComputedStyle(root).display
-              });
-
-              $("#loading").hide();
-              try {
-                if (loading) {
-                  ReactDOM.render(
-                    React.createElement("div", { className: "alert alert-info text-center" }, "Loading events..."),
-                    root
-                  );
-                  console.log(`[${timestamp}] [renderApp] Loading state rendered`);
-                  return;
-                }
-                if (!events.length) {
-                  ReactDOM.render(
-                    React.createElement("div", { className: "alert alert-info text-center" }, "No events found."),
-                    root
-                  );
-                  console.log(`[${timestamp}] [renderApp] No events rendered`);
-                  return;
-                }
-                console.log(`[${timestamp}] [renderApp] Attempting to render ${events.length} events`);
-                ReactDOM.render(
-                  React.createElement(components.ErrorBoundary, null,
-                    React.createElement("div", { className: "event-container" },
-                      React.createElement(components.EventCards, {
-                        events: [...events],
-                        myRegs: [...myRegs],
-                        search,
-                        register,
-                        showUnreg,
-                        refreshMyRegs
-                      }),
-                      React.createElement(components.UnregModal, {
-                        showModal,
-                        unregId,
-                        setShowModal,
-                        handleConfirmUnreg
-                      })
-                    )
-                  ),
-                  root
-                );
-                console.log(`[${timestamp}] [renderApp] Render completed:`, {
-                  eventContainer: !!document.querySelector(".event-container"),
-                  cards: document.querySelectorAll(".panel").length,
-                  modal: !!document.querySelector(".modal"),
-                  rootContentLength: document.getElementById('root').innerHTML.length
-                });
-              } catch (e) {
-                console.error(`[${timestamp}] [renderApp] Failed:`, e);
-                ReactDOM.render(
-                  React.createElement("div", { className: "alert alert-danger" }, `Failed to render events: ${e.message}`),
-                  root
-                );
-                console.log(`[${timestamp}] [renderApp] Error fallback rendered`);
-              }
-            };
-
             React.useEffect(() => {
               const timestamp = new Date().toISOString();
               console.log(`[${timestamp}] [useEffect] Initializing...`);
@@ -599,7 +526,6 @@
                 if (loading) {
                   console.error(`[${timestamp}] [useEffect] Loading timeout`);
                   setLoading(false);
-                  renderApp();
                 }
               }, 30000);
 
@@ -627,6 +553,7 @@
                 } catch (e) {
                   console.error(`[${timestamp}] [useEffect] Data load failed:`, e);
                   setLoading(false);
+                  root.innerHTML = '';
                   ReactDOM.render(
                     React.createElement("div", { className: "alert alert-danger" }, `Failed to load data: ${e.message}`),
                     root
@@ -650,7 +577,77 @@
                 showModal,
                 unregId
               });
-              renderApp();
+
+              if (!root) {
+                console.error(`[${timestamp}] [useEffect] #root not found`);
+                return;
+              }
+              root.innerHTML = '';
+              root.style.display = 'block';
+              root.style.visibility = 'visible';
+              console.log(`[${timestamp}] [useEffect] Root reset:`, {
+                display: root.style.display,
+                visibility: root.style.visibility,
+                computed: window.getComputedStyle(root).display
+              });
+
+              try {
+                if (loading) {
+                  root.innerHTML = '';
+                  ReactDOM.render(
+                    React.createElement("div", { className: "alert alert-info text-center" }, "Loading events..."),
+                    root
+                  );
+                  console.log(`[${timestamp}] [useEffect] Loading state rendered`);
+                  return;
+                }
+                if (!events.length) {
+                  root.innerHTML = '';
+                  ReactDOM.render(
+                    React.createElement("div", { className: "alert alert-info text-center" }, "No events found."),
+                    root
+                  );
+                  console.log(`[${timestamp}] [useEffect] No events rendered`);
+                  return;
+                }
+                console.log(`[${timestamp}] [useEffect] Attempting to render ${events.length} events`);
+                root.innerHTML = '';
+                ReactDOM.render(
+                  React.createElement(components.ErrorBoundary, null,
+                    React.createElement("div", { className: "event-container" },
+                      React.createElement(components.EventCards, {
+                        events: [...events],
+                        myRegs: [...myRegs],
+                        search,
+                        register,
+                        showUnreg,
+                        refreshMyRegs
+                      }),
+                      React.createElement(components.UnregModal, {
+                        showModal,
+                        unregId,
+                        setShowModal,
+                        handleConfirmUnreg
+                      })
+                    )
+                  ),
+                  root
+                );
+                console.log(`[${timestamp}] [useEffect] Render completed:`, {
+                  eventContainer: !!document.querySelector(".event-container"),
+                  cards: document.querySelectorAll(".panel").length,
+                  modal: !!document.querySelector(".modal"),
+                  rootContentLength: document.getElementById('root').innerHTML.length
+                });
+              } catch (e) {
+                console.error(`[${timestamp}] [useEffect] Render failed:`, e);
+                root.innerHTML = '';
+                ReactDOM.render(
+                  React.createElement("div", { className: "alert alert-danger" }, `Failed to render events: ${e.message}`),
+                  root
+                );
+                console.log(`[${timestamp}] [useEffect] Error fallback rendered`);
+              }
             }, [loading, events, myRegs, showModal, unregId]);
 
             const handleSearch = (e) => {
@@ -784,6 +781,7 @@
           console.error(`[${timestamp}] [App Init] Failed:`, e);
           const root = document.getElementById('root');
           if (root) {
+            root.innerHTML = '';
             ReactDOM.render(
               React.createElement("div", { className: "alert alert-danger" }, `Failed to initialize app: ${e.message}`),
               root
@@ -795,6 +793,6 @@
     }
   };
 
-  // Start App 
+  // Start App
   app.init();
 })(window, window.React, window.ReactDOM, window.jQuery);
