@@ -3,7 +3,7 @@
   'use strict';
 
   // === API UTILITIES ===
-  // (No changes needed to the `api` object; it appears functional)
+  // (No changes to the `api` object, as it’s working for registration/unregistration)
 
   // === COMPONENTS ===
   const components = {
@@ -166,6 +166,14 @@
         React.createElement("a", { href: "AdminDashboard.aspx", className: "btn btn-warning btn-block mb-2" }, "Admin Dashboard"),
         React.createElement("a", { href: "Survey.aspx", className: "btn btn-info btn-block" }, "Design Survey")
       );
+    },
+
+    LoadingIndicator() {
+      return React.createElement("div", {
+        id: "loading",
+        className: "alert alert-info text-center",
+        style: { position: "fixed", top: 0, left: 0, right: 0, zIndex: 1000 }
+      }, "Loading...");
     }
   };
 
@@ -278,6 +286,17 @@
               return () => $('#searchBox').off('input', handleSearch);
             }, []);
 
+            // Synchronize #loading visibility with the loading state
+            React.useEffect(() => {
+              const timestamp = new Date().toISOString();
+              console.log(`[${timestamp}] [useEffect] Updating loading indicator:`, { loading });
+              if (loading) {
+                $("#loading").show();
+              } else {
+                $("#loading").hide();
+              }
+            }, [loading]);
+
             const handleSearch = (e) => {
               const timestamp = new Date().toISOString();
               console.log(`[${timestamp}] [handleSearch] Search:`, e.target.value);
@@ -289,7 +308,6 @@
               console.log(`[${timestamp}] [register] Event ID: ${id}`);
               try {
                 setLoading(true);
-                $("#loading").show();
 
                 const ev = events.find(e => e.Id === id);
                 if (!ev) {
@@ -363,9 +381,15 @@
               const timestamp = new Date().toISOString();
               console.log(`[${timestamp}] [refreshMyRegs] Starting...`);
               setLoading(true);
-              const regsData = await api.loadMyRegs(siteRef.current, userEmailRef.current);
-              setMyRegs([...(regsData.error ? [] : regsData)]);
-              setLoading(false);
+              try {
+                const regsData = await api.loadMyRegs(siteRef.current, userEmailRef.current);
+                setMyRegs([...(regsData.error ? [] : regsData)]);
+                setLoading(false);
+              } catch (e) {
+                console.error(`[${timestamp}] [refreshMyRegs] Error:`, e);
+                alert("Failed to refresh registrations. Check console.");
+                setLoading(false);
+              }
             };
 
             const handleConfirmUnreg = async () => {
@@ -379,7 +403,6 @@
               try {
                 setLoading(true);
                 setShowModal(false);
-                $("#loading").show();
                 digestRef.current = (await api.refreshDigest(siteRef.current))?.digest || digestRef.current;
                 const result = await api.unregister(siteRef.current, digestRef.current, unregId, userEmailRef.current);
                 alert(result.message);
@@ -404,13 +427,10 @@
               return React.createElement("div", { className: "alert alert-danger" }, error);
             }
 
-            if (loading) {
-              return React.createElement("div", { className: "alert alert-info text-center" }, "Loading events...");
-            }
-
             return React.createElement(components.ErrorBoundary, null,
               React.createElement("div", { className: "event-container" },
-                React.createElement(components.EventCards, {
+                loading && React.createElement(components.LoadingIndicator),
+                !loading && React.createElement(components.EventCards, {
                   events,
                   myRegs,
                   search,
@@ -429,7 +449,6 @@
           };
 
           ReactDOM.render(React.createElement(App), root);
-          $("#loading").show();
           console.log(`[${timestamp}] [App Init] App rendered`);
         } catch (e) {
           console.error(`[${timestamp}] [App Init] Failed:`, e);
