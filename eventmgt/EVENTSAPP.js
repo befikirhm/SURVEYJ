@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED REGISTRATION + EVENTLOOKUPID EXPANSION + TITLE ===
+// === SP 2016 ON-PREM – FIXED UNREGISTER + REGISTRATION + EVENTLOOKUPID ===
 (function () {
   'use strict';
 
@@ -32,7 +32,6 @@
       let userEmail = '';
       let digest = '';
 
-      // 1. SITE URL
       try {
         console.log(`[${timestamp}] [getContext] Fetching site URL...`);
         if (typeof _spPageContextInfo !== 'undefined' && _spPageContextInfo?.webAbsoluteUrl) {
@@ -48,7 +47,6 @@
         return resolve(null);
       }
 
-      // 2. USER EMAIL
       try {
         console.log(`[${timestamp}] [getContext] Fetching user email via REST...`);
         const userResp = await $.ajax({
@@ -64,7 +62,6 @@
         console.log(`[${timestamp}] [getContext] Fallback User Email:`, userEmail);
       }
 
-      // 3. DIGEST
       try {
         console.log(`[${timestamp}] [getContext] Fetching digest...`);
         digest = $("#FormDigest1").val() || $("#__REQUESTDIGEST").val() || '';
@@ -134,6 +131,7 @@
           this.userEmail = ctx.userEmail;
           this.digest = ctx.digest;
 
+          appInstance = this; // Store component instance
           $('#searchBox').on('input', this.handleSearch);
           this.checkAdmin(() => {
             console.log(`[${timestamp}] [componentDidMount] Admin check done. Loading events...`);
@@ -375,7 +373,6 @@
           console.log(`[${timestamp}] [register] Attempting registration for Event ID:`, id);
 
           try {
-            // Validate Event ID
             if (!Number.isInteger(id) || id <= 0) {
               console.error(`[${timestamp}] [register] Invalid Event ID:`, id);
               alert("Invalid event ID.");
@@ -396,12 +393,10 @@
             }
             console.log(`[${timestamp}] [register] Event validated:`, ev.Title);
 
-            // Force refresh myRegs
             console.log(`[${timestamp}] [register] Refreshing my registrations...`);
             await this.loadMyRegs();
             console.log(`[${timestamp}] [register] My registrations refreshed`);
 
-            // Check local state
             const localReg = this.state.myRegs.find(r => r.EventLookupId === ev.Id);
             if (localReg) {
               console.log(`[${timestamp}] [register] Found in local state for Event ID ${id}:`, localReg);
@@ -410,7 +405,6 @@
             }
             console.log(`[${timestamp}] [register] No local registration found`);
 
-            // Double-check with REST
             console.log(`[${timestamp}] [register] Double-checking via REST...`);
             const existingReg = await this.checkExistingRegistration(id);
             if (existingReg) {
@@ -420,7 +414,6 @@
             }
             console.log(`[${timestamp}] [register] No existing registration via REST`);
 
-            // Check seat availability
             console.log(`[${timestamp}] [register] Checking seat availability...`);
             const count = await this.getRegCount(id);
             const full = ev.MaxSeats && count >= ev.MaxSeats;
@@ -548,11 +541,14 @@
 
           try {
             const query = this.site + "/_api/web/lists/getbytitle('Registrations')/items" +
-                          "?$filter=EventLookupId eq " + id + " and UserEmail eq );
+                          "?$filter=EventLookupId eq " + id + " and UserEmail eq '" + encodeURIComponent(this.userEmail) + "'" +
+                          "&$select=Id,EventLookupId/Id&$expand=EventLookupId";
+            console.log(`[${timestamp}] [unregister] Query URL:`, query);
 
             const response = await $.ajax({
               url: query,
-              headers: { Accept: "application/json; odata=verbose" }
+              headers: { Accept: "application/json; odata=verbose" },
+              timeout: 5000
             });
             const reg = response.d?.results?.[0];
             if (!reg) {
@@ -578,7 +574,10 @@
             await this.loadMyRegs();
           } catch (xhr) {
             console.error(`[${timestamp}] [unregister] Error unregistering for Event ID ${id}:`, xhr);
-            handleError("Unregister", xhr, "Failed to cancel registration. Please check permissions or list settings.");
+            let userMsg = "Failed to cancel registration.";
+            if (xhr.status === 403) userMsg = "Access denied. Please check your permissions.";
+            if (xhr.status === 404) userMsg = "Registration not found.";
+            handleError("Unregister", xhr, userMsg);
           }
         }
 
@@ -655,12 +654,16 @@
       $(document).on('click', '#confirmUnreg', () => {
         const timestamp = new Date().toISOString();
         console.log(`[${timestamp}] [confirmUnreg] Unregister button clicked`);
-        appInstance?.unregister();
+        if (appInstance && typeof appInstance.unregister === 'function') {
+          appInstance.unregister();
+        } else {
+          console.error(`[${timestamp}] [confirmUnreg] appInstance.unregister is not a function`, appInstance);
+          alert("Error: Unable to cancel registration. Please check console for details.");
+        }
       });
 
       const app = React.createElement(App);
       ReactDOM.render(app, document.getElementById("root"));
-      appInstance = app;
       $("#loading").show();
       console.log(`[${timestamp}] [App Init] App rendered, loading shown`);
 
