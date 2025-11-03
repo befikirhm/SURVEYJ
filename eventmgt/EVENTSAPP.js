@@ -105,7 +105,11 @@
             React.createElement("div", { className: panelCls },
               React.createElement("div", { className: "panel-heading" }, ev.Title || "Untitled Event"),
               React.createElement("div", { className: "panel-body" },
-                React.createElement("p", null, "Time: ", ev.StartTime ? new Date(ev.StartTime).toLocaleString() : "TBD", " - ", ev.EndTime ? new Date(ev.EndTime).toLocaleString() : "TBD"),
+                React.createElement("p", null, "Time: ",
+                  ev.StartTime ? new Date(ev.StartTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : "TBD",
+                  " - ",
+                  ev.EndTime ? new Date(ev.EndTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : "TBD"
+                ),
                 React.createElement("p", null, "Room: ", ev.Room || "TBD"),
                 React.createElement("p", null, "Instructor: ", ev.Instructor || "TBD"),
                 React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
@@ -198,7 +202,7 @@
 
     init() {
       $(document).ready(async () => {
-        const timestamp = new Date().toISOString();
+        const timestamp = new Date(). toISOString();
         console.log(`[${timestamp}] [App Init] DOM Ready`);
 
         try {
