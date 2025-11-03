@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED REACT MODAL NOT SHOWING ===
+// === SP 2016 ON-PREM – FIXED EVENT CARDS, MODAL VISIBILITY, AND SYNTAX ===
 (function () {
   'use strict';
 
@@ -135,12 +135,86 @@
         const userEmailRef = React.useRef(ctx.userEmail);
         const digestRef = React.useRef(ctx.digest);
 
-        // useEffect for rendering cards and modal
+        // Error Boundary Component
+        const ErrorBoundary = ({ children }) => {
+          const [error, setError] = React.useState(null);
+          React.useEffect(() => {
+            if (error) {
+              const timestamp = new Date().toISOString();
+              console.error(`[${timestamp}] [ErrorBoundary] Render error:`, error);
+              handleError("Render Component", error, "Failed to render component. Check console for details.");
+            }
+          }, [error]);
+          try {
+            return error ? React.createElement("div", { className: "alert alert-danger" }, "Render error. Check console.") : children;
+          } catch (e) {
+            setError(e);
+            return null;
+          }
+        };
+
+        // Modal Component
+        const UnregModal = () => {
+          const timestamp = new Date().toISOString();
+          console.log(`[${timestamp}] [UnregModal] Rendering modal, showModal:`, showModal, "unregId:", unregId);
+          return showModal ? [
+            React.createElement("div", {
+              key: "modal-backdrop",
+              className: "modal-backdrop",
+              style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1040 },
+              onClick: () => {
+                console.log(`[${timestamp}] [modal] Backdrop clicked`);
+                setShowModal(false);
+              }
+            }),
+            React.createElement("div", {
+              key: "modal",
+              className: "modal",
+              style: { display: "block", position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1050, overflow: "auto" }
+            },
+              React.createElement("div", { className: "modal-dialog", style: { margin: "10% auto", maxWidth: "500px" } },
+                React.createElement("div", { className: "modal-content" },
+                  React.createElement("div", { className: "modal-header" },
+                    React.createElement("h4", { className: "modal-title" }, "Confirm Unregister"),
+                    React.createElement("button", {
+                      className: "close",
+                      onClick: () => {
+                        console.log(`[${timestamp}] [modal] Close clicked`);
+                        setShowModal(false);
+                      }
+                    }, "×")
+                  ),
+                  React.createElement("div", { className: "modal-body" },
+                    React.createElement("p", null, "Are you sure you want to unregister from this event?")
+                  ),
+                  React.createElement("div", { className: "modal-footer" },
+                    React.createElement("button", {
+                      className: "btn btn-default",
+                      onClick: () => {
+                        console.log(`[${timestamp}] [modal] Close button clicked`);
+                        setShowModal(false);
+                      }
+                    }, "Close"),
+                    React.createElement("button", {
+                      className: "btn btn-danger",
+                      onClick: () => {
+                        console.log(`[${timestamp}] [modal] Yes, Cancel clicked`);
+                        handleConfirmUnreg();
+                      }
+                    }, "Yes, Cancel")
+                  )
+                )
+              )
+            )
+          ] : null;
+        };
+
+        // useEffect for rendering cards
         React.useEffect(() => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [useEffect] Rendering cards, showModal:`, showModal, "unregId:", unregId);
+          console.log(`[${timestamp}] [useEffect] Rendering cards, state:`, { loading, events: events.length, myRegs: myRegs.length, showModal, unregId });
           renderCards();
-        }, [events, search, myRegs, loading, showModal, unregId]);
+        }, [events, myRegs, search, loading, showModal, unregId]);
 
         // useEffect for componentDidMount
         React.useEffect(() => {
@@ -161,10 +235,10 @@
             showUnreg,
             register
           };
+          window.appInstance = appInstance; // Expose for debugging
 
           $('#searchBox').on('input', handleSearch);
 
-          // Timeout to prevent infinite loading
           const timeout = setTimeout(() => {
             if (loading) {
               console.error(`[${timestamp}] [useEffect] Loading timeout after 30s`);
@@ -180,6 +254,7 @@
                 console.log(`[${timestamp}] [useEffect] All data loaded, clearing timeout`);
                 clearTimeout(timeout);
                 setLoading(false);
+                setTimeout(() => renderCards(), 0); // Force render after data load
               })
               .catch(err => {
                 console.error(`[${timestamp}] [useEffect] Error loading data:`, err);
@@ -292,7 +367,6 @@
                   if (evs.length === 0) {
                     console.log(`[${timestamp}] [loadEvents] No events found in response`);
                     setEvents([]);
-                    setLoading(false);
                     resolve([]);
                     return;
                   }
@@ -306,14 +380,12 @@
                     .catch(err => {
                       console.warn(`[${timestamp}] [loadEvents] Error processing reg counts:`, err);
                       setEvents([...evs.map(e => ({ ...e, regCount: 0 }))]);
-                      setLoading(false);
                       resolve(evs);
                     });
                 } catch (err) {
                   console.error(`[${timestamp}] [loadEvents] Error parsing events:`, err);
                   handleError("Parse Events", err, "Failed to parse events data. Check list columns or response format.");
                   setEvents([]);
-                  setLoading(false);
                   resolve([]);
                 }
               },
@@ -329,7 +401,6 @@
                 if (xhr.status === 400) msg = "Invalid query. Check column names in Events list.";
                 handleError("Load Events", xhr, msg);
                 setEvents([]);
-                setLoading(false);
                 resolve([]);
               }
             });
@@ -345,7 +416,6 @@
               console.error(`[${timestamp}] [loadMyRegs] Invalid userEmail:`, userEmailRef.current);
               handleError("Load My Registrations", new Error("Invalid user email"), "Cannot load registrations due to invalid user email.");
               setMyRegs([]);
-              setLoading(false);
               resolve([]);
               return;
             }
@@ -384,7 +454,6 @@
                   console.error(`[${timestamp}] [loadMyRegs] Error parsing registrations:`, e);
                   handleError("Parse Registrations", e, "Failed to parse user registrations.");
                   setMyRegs([]);
-                  setLoading(false);
                   resolve([]);
                 }
               },
@@ -401,7 +470,6 @@
                 if (xhr.status === 400) userMsg = "Invalid query. Check UserEmail or EventLookupId configuration.";
                 handleError("Load My Registrations", xhr, userMsg);
                 setMyRegs([]);
-                setLoading(false);
                 resolve([]);
               }
             });
@@ -747,6 +815,12 @@
           setUnregId(id);
           setShowModal(true);
           console.log(`[${timestamp}] [showUnreg] React modal shown, unregId set to:`, id);
+          setTimeout(() => {
+            console.log(`[${timestamp}] [showUnreg] Modal DOM check:`, {
+              modal: !!document.querySelector(".modal"),
+              backdrop: !!document.querySelector(".modal-backdrop")
+            });
+          }, 100);
         };
 
         const unregister = async (eventId) => {
@@ -850,7 +924,7 @@
 
         const renderCards = () => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [renderCards] Rendering event cards, showModal:`, showModal, "unregId:", unregId);
+          console.log(`[${timestamp}] [renderCards] Rendering event cards, state:`, { loading, events: events.length, myRegs: myRegs.length, showModal, unregId });
 
           const root = document.getElementById('root');
           if (!root) {
@@ -939,63 +1013,22 @@
             );
           }) : [React.createElement("div", { key: "no", className: "alert alert-info text-center" }, "No events found. Please check Events list or permissions.")];
 
-          const modal = showModal ? [
-            React.createElement("div", { 
-              key: "modal-backdrop", 
-              className: "modal-backdrop", 
-              style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1040 } 
-            }),
-            React.createElement("div", { 
-              key: "modal", 
-              className: "modal", 
-              style: { display: "block", position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1050 } 
-            },
-              React.createElement("div", { className: "modal-dialog", style: { margin: "10% auto", maxWidth: "500px" } },
-                React.createElement("div", { className: "modal-content" },
-                  React.createElement("div", { className: "modal-header" },
-                    React.createElement("h4", { className: "modal-title" }, "Confirm Unregister"),
-                    React.createElement("button", { 
-                      className: "close", 
-                      onClick: () => { 
-                        console.log(`[${new Date().toISOString()}] [modal] Close clicked`); 
-                        setShowModal(false); 
-                      } 
-                    }, "×")
-                  ),
-                  React.createElement("div", { className: "modal-body" },
-                    React.createElement("p", null, "Are you sure you want to unregister from this event?")
-                  ),
-                  React.createElement("div", { className: "modal-footer" },
-                    React.createElement("button", { 
-                      className: "btn btn-default", 
-                      onClick: () => { 
-                        console.log(`[${new Date().toISOString()}] [modal] Close button clicked`); 
-                        setShowModal(false); 
-                      } 
-                    }, "Close"),
-                    React.createElement("button", { 
-                      className: "btn btn-danger", 
-                      onClick: () => { 
-                        console.log(`[${new Date().toISOString()}] [modal] Yes, Cancel clicked`); 
-                        handleConfirmUnreg(); 
-                      } 
-                    }, "Yes, Cancel")
-                  )
-                )
-              )
-            )
-          ] : [];
-
           console.log(`[${timestamp}] [renderCards] Rendering ${cards.length} cards, modal visible:`, showModal);
           try {
             ReactDOM.render(
-              React.createElement("div", null,
-                React.createElement("div", { className: "row" }, cards),
-                modal
+              React.createElement(ErrorBoundary, null,
+                React.createElement("div", null,
+                  React.createElement("div", { className: "row" }, cards),
+                  React.createElement(UnregModal)
+                )
               ),
               root
             );
-            console.log(`[${timestamp}] [renderCards] Rendered successfully, checking modal DOM:`, !!document.querySelector(".modal"));
+            console.log(`[${timestamp}] [renderCards] Rendered successfully, checking DOM:`, {
+              cards: !!document.querySelector(".row"),
+              modal: !!document.querySelector(".modal"),
+              backdrop: !!document.querySelector(".modal-backdrop")
+            });
           } catch (e) {
             console.error(`[${timestamp}] [renderCards] ReactDOM.render failed:`, e);
             handleError("Render Cards", e, "Failed to render event cards or modal. Check React version or DOM setup.");
@@ -1017,7 +1050,6 @@
       ReactDOM.render(app, root);
       $("#loading").show();
       console.log(`[${timestamp}] [App Init] App rendered, loading shown`);
-
     } catch (err) {
       handleError("App Init", err, "Failed to initialize app.");
     }
