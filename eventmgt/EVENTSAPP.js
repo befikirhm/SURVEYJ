@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – UPGRADED TO REACT 17 ===
+// === SP 2016 ON-PREM – REACT 17 INITIALIZATION FIX ===
 (function () {
   'use strict';
 
@@ -27,6 +27,24 @@
     } else {
       console.error(`[${timestamp}] [handleError] #root element not found`);
       alert(`${userMsg}\nError: #root element not found in DOM.`);
+    }
+  }
+
+  // === VALIDATE DEPENDENCIES ===
+  function validateDependencies() {
+    const timestamp = new Date().toISOString();
+    const checks = {
+      jQuery: typeof $ === "function" ? "Loaded" : "Not loaded",
+      React: typeof React !== "undefined" ? `Loaded ${React.version}` : "Not loaded",
+      ReactDOM: typeof ReactDOM !== "undefined" ? "Loaded" : "Not loaded",
+      createRoot: typeof ReactDOM.createRoot === "function" ? "Available" : "Not available"
+    };
+    console.log(`[${timestamp}] [validateDependencies] Dependency check:`, checks);
+    if (checks.jQuery !== "Loaded" || checks.React === "Not loaded" || checks.ReactDOM === "Not loaded" || checks.createRoot !== "Available") {
+      throw new Error("Required dependencies missing: " + JSON.stringify(checks));
+    }
+    if (React.version !== "17.0.2") {
+      console.warn(`[${timestamp}] [validateDependencies] Unexpected React version: ${React.version}, expected 17.0.2`);
     }
   }
 
@@ -117,16 +135,41 @@
   $(document).ready(async function () {
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}] [App Init] DOM Ready. Initializing...`);
-    console.log(`[${timestamp}] [App Init] React version:`, React.version);
-
-    let appInstance = null;
-    let reactRoot = null;
 
     try {
+      // Validate dependencies
+      validateDependencies();
+      console.log(`[${timestamp}] [App Init] Dependencies validated: React ${React.version}`);
+
+      // Check DOM
+      const root = document.getElementById('root');
+      if (!root) {
+        console.error(`[${timestamp}] [App Init] #root element not found in DOM`);
+        throw new Error("Root element not found. Check EventsDashboard.aspx for <div id='root'></div>");
+      }
+      root.style.display = 'block';
+      root.style.visibility = 'visible';
+      console.log(`[${timestamp}] [App Init] Root initialized, CSS:`, {
+        display: root.style.display,
+        visibility: root.style.visibility,
+        computed: window.getComputedStyle(root).display
+      });
+
+      // Check SharePoint DOM interference
+      const workspace = document.getElementById('s4-workspace');
+      const bodyContainer = document.getElementById('s4-bodyContainer');
+      console.log(`[${timestamp}] [App Init] SharePoint DOM check:`, {
+        workspace: workspace ? window.getComputedStyle(workspace).display : "Missing",
+        bodyContainer: bodyContainer ? window.getComputedStyle(bodyContainer).display : "Missing"
+      });
+
+      let appInstance = null;
+      let reactRoot = null;
+
       const ctx = await getContext();
       if (!ctx) {
         console.error(`[${timestamp}] [App Init] Context load failed`);
-        return;
+        throw new Error("Failed to load SharePoint context");
       }
 
       console.log(`[${timestamp}] [App Init] FULL CONTEXT READY:`, { site: ctx.site, user: ctx.userEmail });
@@ -419,7 +462,7 @@
           try {
             const adminRoot = document.getElementById("adminLinks");
             if (!adminRoot) {
-              console.error(`[${timestamp}] [renderAdminLinks] #adminLinks element not found`);
+              console.error(`[${timestamp}] [rebuildAdminLinks] #adminLinks element not found`);
               return;
             }
             const links = React.createElement("div", null,
@@ -1029,7 +1072,8 @@
             exists: !!root,
             innerHTML: root.innerHTML,
             display: root.style.display,
-            visibility: root.style.visibility
+            visibility: root.style.visibility,
+            computed: window.getComputedStyle(root).display
           });
 
           $("#loading").hide();
@@ -1098,20 +1142,7 @@
         return null;
       };
 
-      const root = document.getElementById('root');
-      if (!root) {
-        console.error(`[${timestamp}] [App Init] #root element not found in DOM`);
-        alert("Error: #root element not found in DOM. Check EventsDashboard.aspx.");
-        return;
-      }
-
-      root.style.display = 'block';
-      root.style.visibility = 'visible';
-      console.log(`[${timestamp}] [App Init] Root initialized, CSS:`, {
-        display: root.style.display,
-        visibility: root.style.visibility
-      });
-
+      // Render App
       try {
         reactRoot = ReactDOM.createRoot(root);
         reactRoot.render(React.createElement(App));
@@ -1119,10 +1150,10 @@
         console.log(`[${timestamp}] [App Init] App rendered with createRoot, loading shown`);
       } catch (e) {
         console.error(`[${timestamp}] [App Init] Failed to render app:`, e);
-        handleError("App Init", e, "Failed to initialize app. Check React CDN or console.");
+        throw new Error("Failed to initialize React root: " + e.message);
       }
     } catch (err) {
-      handleError("App Init", err, "Failed to initialize app.");
+      handleError("App Init", err, "Failed to initialize app. Check React CDN or console.");
     }
   });
 })();
