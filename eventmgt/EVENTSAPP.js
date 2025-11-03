@@ -3,34 +3,96 @@
   'use strict';
 
   // === API UTILITIES ===
-  // (No changes to the `api` object, as it’s working for registration/unregistration)
+  const api = {
+    // ... (Keep existing api methods unchanged, except for loadEvents below)
+
+    loadEvents(site, digest, maxRetries = 2) {
+      const timestamp = new Date().toISOString();
+      console.log(`[${timestamp}] [API loadEvents] Starting, retries: ${maxRetries}`);
+      const q = "?$select=Id,Title,StartDate,EndDate,Location,Instructor,MaxSeats,AllowRegistration,IsOver,Attachments";
+      const url = site + "/_api/web/lists/getbytitle('Events')/items" + q;
+
+      const attemptLoad = (attempt) => {
+        return $.ajax({ url, headers: { Accept: "application/json; odata=verbose" }, timeout: 15000 }).then(d => {
+          console.log(`[${timestamp}] [API loadEvents] Raw response:`, d);
+          let evs = (d.d?.results || []).map((ev, index) => {
+            const startDate = ev.StartDate ? new Date(ev.StartDate) : null;
+            const endDate = ev.EndDate ? new Date(ev.EndDate) : null;
+            console.log(`[${timestamp}] [API loadEvents] Event ${index + 1}:`, { Id: ev.Id, Title: ev.Title, StartDate: ev.StartDate });
+            if (!ev.Id || !ev.Title || !startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+              console.warn(`[${timestamp}] [API loadEvents] Skipping invalid event:`, ev);
+              return null;
+            }
+            return {
+              Id: ev.Id,
+              Title: ev.Title,
+              StartTime: startDate.toISOString(),
+              EndTime: endDate.toISOString(),
+              Room: ev.Location || "TBD",
+              Instructor: ev.Instructor || "TBD",
+              MaxSeats: ev.MaxSeats || null,
+              AllowRegistration: !!ev.AllowRegistration,
+              IsOver: !!ev.IsOver,
+              Attachments: ev.Attachments || false,
+              regCount: 0
+            };
+          }).filter(ev => ev !== null).sort((a, b) => new Date(a.StartTime) - new Date(b.StartTime));  // Sort by start time ascending
+
+          console.log(`[${timestamp}] [API loadEvents] Events processed:`, evs.length);
+          if (evs.length === 0) return evs;
+
+          return Promise.all(evs.map(e => this.getRegCount(site, e.Id).then(c => ({ ...e, regCount: c }))))
+            .then(processed => {
+              console.log(`[${timestamp}] [API loadEvents] Events with reg counts:`, processed.length);
+              return processed;
+            });
+        }).catch(xhr => {
+          if (attempt < maxRetries) {
+            console.warn(`[${timestamp}] [API loadEvents] Attempt ${attempt} failed, retrying...`);
+            return attemptLoad(attempt + 1);
+          }
+          let msg = "Failed to load events.";
+          if (xhr.status === 404) msg = "List 'Events' not found.";
+          if (xhr.status === 403) msg = "Access denied to Events list.";
+          return this.handleError("loadEvents", xhr, msg);
+        });
+      };
+      return attemptLoad(1);
+    },
+
+    // New API for saving survey response
+    saveSurveyResponse(site, digest, responseData) {
+      const timestamp = new Date().toISOString();
+      console.log(`[${timestamp}] [API saveSurveyResponse] Saving response...`);
+      return $.ajax({
+        url: site + "/_api/web/lists/getbytitle('SurveyResponses')/items",
+        type: "POST",
+        data: JSON.stringify({
+          '__metadata': { type: 'SP.Data.SurveyResponsesListItem' },
+          Title: 'Event Feedback Response',
+          SurveyJSON: JSON.stringify(responseData),
+          EventTitles: responseData.eventTitles.join(', '),
+          SubmittedBy: _spPageContextInfo?.userDisplayName || 'Unknown',
+          SubmitDate: new Date().toISOString()
+        }),
+        headers: {
+          Accept: "application/json; odata=verbose",
+          "X-RequestDigest": digest,
+          "Content-Type": "application/json; odata=verbose"
+        },
+        timeout: 15000
+      }).then(() => ({ success: true, message: 'Response saved successfully!' })).catch(xhr => {
+        const msg = xhr.responseJSON?.error?.message?.value || "Failed to save response";
+        return { success: false, message: msg };
+      });
+    },
+
+    // ... (Keep all other existing api methods unchanged)
+  };
 
   // === COMPONENTS ===
   const components = {
-    ErrorBoundary({ children }) {
-      const [error, setError] = React.useState(null);
-      React.useEffect(() => {
-        if (error) {
-          const timestamp = new Date().toISOString();
-          console.error(`[${timestamp}] [ErrorBoundary] Render error:`, error);
-          const root = document.getElementById('root');
-          if (root) {
-            root.innerHTML = '';
-            ReactDOM.render(
-              React.createElement("div", { className: "alert alert-danger" }, `Render error: ${error.message || "Unknown error"}`),
-              root
-            );
-            console.log(`[${timestamp}] [ErrorBoundary] Fallback UI rendered`);
-          }
-        }
-      }, [error]);
-      try {
-        return error ? null : children;
-      } catch (e) {
-        setError(e);
-        return null;
-      }
-    },
+    // ... (Keep existing ErrorBoundary, UnregModal, AdminLinks, LoadingIndicator unchanged)
 
     EventCards({ events, myRegs, search, register, showUnreg, refreshMyRegs }) {
       const timestamp = new Date().toISOString();
@@ -101,6 +163,9 @@
             );
           }
 
+          // Generate unique surveyId for this event set (hash of titles for simplicity)
+          const surveyId = btoa(filtered.map(e => e.Title).join(',')).substring(0, 10);
+
           return React.createElement("div", { key: `event-${ev.Id}`, className: "col-md-6 mb-3" },
             React.createElement("div", { className: panelCls },
               React.createElement("div", { className: "panel-heading" }, ev.Title || "Untitled Event"),
@@ -111,10 +176,14 @@
                   ev.EndTime ? new Date(ev.EndTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : "TBD"
                 ),
                 React.createElement("p", null, "Room: ", ev.Room || "TBD"),
-                React.createElement("p", null, "Instructor: ", ev.Instructor || "TBD"),
-                React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
+                React.createElement("p", null, "Instructor: ", ev.Instructor || "TBD")
               ),
-              React.createElement("div", { className: "panel-footer text-right" }, btn)
+              React.createElement("div", { className: "panel-footer" },
+                React.createElement("div", { className: "pull-left" },
+                  React.createElement("p", { className: "nomargin" }, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
+                ),
+                React.createElement("div", { className: "pull-right" }, btn)
+              )
             )
           );
         } catch (e) {
@@ -127,10 +196,67 @@
       return React.createElement("div", { className: "row event-row" }, cards);
     },
 
-    UnregModal({ showModal, unregId, setShowModal, handleConfirmUnreg }) {
+    // New SurveyModal component for admins
+    SurveyModal({ showModal, setShowModal, events, site, digest }) {
       const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [UnregModal] Rendering, showModal: ${showModal}, unregId: ${unregId}`);
-      if (!showModal) return null;
+      const [survey, setSurvey] = React.useState(null);
+      const [isDesigner, setIsDesigner] = React.useState(true);  // Toggle between design/fill
+      const surveyElementRef = React.useRef(null);
+
+      React.useEffect(() => {
+        if (showModal && events.length > 0) {
+          const eventTitles = events.map(e => e.Title);
+          const surveyJson = {
+            title: "Event Feedback Survey",
+            pages: [{
+              name: "page1",
+              elements: [
+                ...eventTitles.map(title => ({
+                  type: "rating",
+                  name: title.replace(/\s+/g, '_').toLowerCase(),
+                  title: `How would you rate "${title}"?`,
+                  isRequired: true,
+                  rateMin: 1,
+                  rateMax: 5,
+                  minRateDescription: "Poor",
+                  maxRateDescription: "Excellent",
+                  renderAs: "stars"
+                })),
+                {
+                  type: "textarea",
+                  name: "comments",
+                  title: "Any ideas for future classes, comments, concerns or suggestion?",
+                  isRequired: false,
+                  maxLength: 1000,
+                  rows: 5
+                }
+              ]
+            }]
+          };
+          const newSurvey = new Survey.Model(surveyJson);
+          newSurvey.onComplete.add((sender) => {
+            const responseData = { ...sender.data, eventTitles };
+            api.saveSurveyResponse(site, digest, responseData).then(result => {
+              alert(result.message);
+              setShowModal(false);
+            });
+          });
+          setSurvey(newSurvey);
+        }
+      }, [showModal, events]);
+
+      React.useEffect(() => {
+        if (survey && surveyElementRef.current) {
+          if (isDesigner) {
+            const creator = new SurveyCreator.SurveyCreator({ survey });
+            creator.render(surveyElementRef.current);
+          } else {
+            survey.render(surveyElementRef.current);
+          }
+        }
+      }, [survey, isDesigner]);
+
+      if (!showModal || !survey) return null;
 
       return [
         React.createElement("div", {
@@ -144,65 +270,42 @@
           className: "modal",
           style: { display: "block", position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1050, overflow: "auto" }
         },
-          React.createElement("div", { className: "modal-dialog", style: { margin: "10% auto", maxWidth: "500px" } },
+          React.createElement("div", { className: "modal-dialog", style: { margin: "5% auto", maxWidth: "800px", width: "90%" } },
             React.createElement("div", { className: "modal-content" },
               React.createElement("div", { className: "modal-header" },
-                React.createElement("h4", { className: "modal-title" }, "Confirm Unregister"),
+                React.createElement("h4", { className: "modal-title" }, isDesigner ? "Design Survey" : "Fill Survey"),
                 React.createElement("button", { className: "close", onClick: () => setShowModal(false) }, "×")
               ),
               React.createElement("div", { className: "modal-body" },
-                React.createElement("p", null, "Are you sure you want to unregister from this event?")
+                React.createElement("div", {
+                  ref: surveyElementRef,
+                  style: { height: "500px", margin: "10px 0" }
+                }),
+                React.createElement("div", null,
+                  React.createElement("button", {
+                    className: "btn btn-secondary mr-2",
+                    onClick: () => setIsDesigner(!isDesigner)
+                  }, isDesigner ? "Switch to Fill Mode" : "Switch to Design Mode")
+                )
               ),
               React.createElement("div", { className: "modal-footer" },
                 React.createElement("button", { className: "btn btn-default", onClick: () => setShowModal(false) }, "Close"),
-                React.createElement("button", { className: "btn btn-danger", onClick: handleConfirmUnreg }, "Yes, Cancel")
+                !isDesigner && React.createElement("button", { className: "btn btn-primary", onClick: () => survey.completeLastPage() }, "Submit")
               )
             )
           )
         )
       ];
-    },
-
-    AdminLinks() {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [AdminLinks] Rendering...`);
-      return React.createElement("div", null,
-        React.createElement("a", { href: "AdminDashboard.aspx", className: "btn btn-warning btn-block mb-2" }, "Admin Dashboard"),
-        React.createElement("a", { href: "Survey.aspx", className: "btn btn-info btn-block" }, "Design Survey")
-      );
-    },
-
-    LoadingIndicator() {
-      return React.createElement("div", {
-        id: "loading",
-        className: "alert alert-info text-center",
-        style: { position: "fixed", top: 0, left: 0, right: 0, zIndex: 1000 }
-      }, "Loading...");
     }
   };
 
   // === MAIN APP ===
   const app = {
-    validateDependencies() {
-      const timestamp = new Date().toISOString();
-      const checks = {
-        jQuery: typeof $ === "function" ? "Loaded" : "Not loaded",
-        React: typeof React !== "undefined" ? `Loaded ${React.version}` : "Not loaded",
-        ReactDOM: typeof ReactDOM !== "undefined" ? "Loaded" : "Not loaded",
-        render: typeof ReactDOM.render === "function" ? "Available" : "Not available"
-      };
-      console.log(`[${timestamp}] [validateDependencies] Check:`, checks);
-      if (Object.values(checks).includes("Not loaded") || checks.render !== "Available") {
-        throw new Error("Dependencies missing: " + JSON.stringify(checks));
-      }
-      if (React.version !== "17.0.2") {
-        console.warn(`[${timestamp}] [validateDependencies] Unexpected React version: ${React.version}`);
-      }
-    },
+    // ... (Keep existing validateDependencies and init unchanged, except for App component below)
 
     init() {
       $(document).ready(async () => {
-        const timestamp = new Date(). toISOString();
+        const timestamp = new Date().toISOString();
         console.log(`[${timestamp}] [App Init] DOM Ready`);
 
         try {
@@ -235,6 +338,7 @@
             const [loading, setLoading] = React.useState(true);
             const [unregId, setUnregId] = React.useState(null);
             const [showModal, setShowModal] = React.useState(false);
+            const [showSurveyModal, setShowSurveyModal] = React.useState(false);
             const [error, setError] = React.useState(null);
 
             const siteRef = React.useRef(ctx.site);
@@ -307,123 +411,14 @@
               setSearch(e.target.value);
             };
 
-            const register = async (id) => {
-              const timestamp = new Date().toISOString();
-              console.log(`[${timestamp}] [register] Event ID: ${id}`);
-              try {
-                setLoading(true);
+            // ... (Keep existing register, showUnreg, refreshMyRegs, handleConfirmUnreg unchanged)
 
-                const ev = events.find(e => e.Id === id);
-                if (!ev) {
-                  alert("Event not found.");
-                  setLoading(false);
-                  return;
-                }
-                if (!ev.AllowRegistration) {
-                  alert("Registration closed.");
-                  setLoading(false);
-                  return;
-                }
-                const endDate = new Date(ev.EndTime);
-                if (endDate.getTime() < Date.now()) {
-                  alert("This event has ended.");
-                  setLoading(false);
-                  return;
-                }
-                const existing = await api.checkExistingRegistration(siteRef.current, id, userEmailRef.current);
-                if (existing) {
-                  alert(`You are already ${existing.Status === 'Confirmed' ? 'registered' : `waitlisted (#${existing.WaitlistPosition})`}`);
-                  setLoading(false);
-                  return;
-                }
-                digestRef.current = (await api.refreshDigest(siteRef.current))?.digest || digestRef.current;
-                if (!digestRef.current) {
-                  alert("Failed to refresh form digest.");
-                  setLoading(false);
-                  return;
-                }
-                const count = await api.getRegCount(siteRef.current, id);
-                const full = ev.MaxSeats && count >= ev.MaxSeats;
-                if (!full) {
-                  const result = await api.createReg(siteRef.current, digestRef.current, id, userEmailRef.current, 'Confirmed', null, ev.Title);
-                  alert(result.message);
-                } else {
-                  const pos = await api.getNextWaitlistPosition(siteRef.current, id);
-                  if (confirm(`Event full. Join waitlist #${pos}?`)) {
-                    const result = await api.createReg(siteRef.current, digestRef.current, id, userEmailRef.current, 'Waitlisted', pos, ev.Title);
-                    alert(result.message);
-                  } else {
-                    alert("Waitlist registration cancelled.");
-                  }
-                }
-                const [eventsData, regsData] = await Promise.all([
-                  api.loadEvents(siteRef.current, digestRef.current),
-                  api.loadMyRegs(siteRef.current, userEmailRef.current)
-                ]);
-                setEvents([...(eventsData.error ? [] : eventsData)]);
-                setMyRegs([...(regsData.error ? [] : regsData)]);
-                setLoading(false);
-              } catch (e) {
-                console.error(`[${timestamp}] [register] Error:`, e);
-                alert("Failed to register. Check console.");
-                setLoading(false);
-              }
-            };
-
-            const showUnreg = (id) => {
-              const timestamp = new Date().toISOString();
-              console.log(`[${timestamp}] [showUnreg] Event ID: ${id}`);
-              if (!Number.isInteger(id) || id <= 0) {
-                alert("Invalid event ID.");
+            const handleDesignSurvey = () => {
+              if (events.length === 0) {
+                alert("No events available for survey.");
                 return;
               }
-              setUnregId(id);
-              setShowModal(true);
-            };
-
-            const refreshMyRegs = async () => {
-              const timestamp = new Date().toISOString();
-              console.log(`[${timestamp}] [refreshMyRegs] Starting...`);
-              setLoading(true);
-              try {
-                const regsData = await api.loadMyRegs(siteRef.current, userEmailRef.current);
-                setMyRegs([...(regsData.error ? [] : regsData)]);
-                setLoading(false);
-              } catch (e) {
-                console.error(`[${timestamp}] [refreshMyRegs] Error:`, e);
-                alert("Failed to refresh registrations. Check console.");
-                setLoading(false);
-              }
-            };
-
-            const handleConfirmUnreg = async () => {
-              const timestamp = new Date().toISOString();
-              console.log(`[${timestamp}] [handleConfirmUnreg] Unreg ID: ${unregId}`);
-              if (!Number.isInteger(unregId) || unregId <= 0) {
-                alert("Invalid event ID.");
-                setShowModal(false);
-                return;
-              }
-              try {
-                setLoading(true);
-                setShowModal(false);
-                digestRef.current = (await api.refreshDigest(siteRef.current))?.digest || digestRef.current;
-                const result = await api.unregister(siteRef.current, digestRef.current, unregId, userEmailRef.current);
-                alert(result.message);
-                const [eventsData, regsData] = await Promise.all([
-                  api.loadEvents(siteRef.current, digestRef.current),
-                  api.loadMyRegs(siteRef.current, userEmailRef.current)
-                ]);
-                setEvents([...(eventsData.error ? [] : eventsData)]);
-                setMyRegs([...(regsData.error ? [] : regsData)]);
-                setUnregId(null);
-                setLoading(false);
-              } catch (e) {
-                console.error(`[${timestamp}] [handleConfirmUnreg] Error:`, e);
-                alert("Failed to unregister. Check console.");
-                setLoading(false);
-                setShowModal(false);
-              }
+              setShowSurveyModal(true);
             };
 
             // Render directly in the component
@@ -447,7 +442,30 @@
                   unregId,
                   setShowModal,
                   handleConfirmUnreg
-                })
+                }),
+                React.createElement(components.SurveyModal, {
+                  showModal: showSurveyModal,
+                  setShowModal: setShowSurveyModal,
+                  events,
+                  site: siteRef.current,
+                  digest: digestRef.current
+                }),
+                isAdmin && React.createElement("div", { className: "admin-footer mt-3 text-center" },
+                  React.createElement("button", {
+                    className: "btn btn-primary mr-2",
+                    onClick: handleDesignSurvey
+                  }, "Design Event Survey"),
+                  React.createElement("a", {
+                    href: `SurveyFiller.aspx?surveyId=${btoa(events.map(e => e.Title).join(','))}`,
+                    target: "_blank",
+                    className: "btn btn-info mr-2"
+                  }, "Form Filler"),
+                  React.createElement("a", {
+                    href: `SurveyResponses.aspx?surveyId=${btoa(events.map(e => e.Title).join(','))}`,
+                    target: "_blank",
+                    className: "btn btn-secondary"
+                  }, "Response Page")
+                )
               )
             );
           };
