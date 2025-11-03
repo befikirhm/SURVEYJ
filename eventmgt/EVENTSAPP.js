@@ -156,7 +156,7 @@
         // Event Cards Component
         const EventCards = ({ events, myRegs, search, register, showUnreg, refreshMyRegs }) => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [EventCards] Rendering ${events.length} events, search:`, search);
+          console.log(`[${timestamp}] [EventCards] Rendering ${events.length} events, search:`, search, "events:", events);
 
           const filtered = events.filter(e =>
             (e.Title || "").toLowerCase().includes(search) ||
@@ -165,6 +165,10 @@
           console.log(`[${timestamp}] [EventCards] Filtered events:`, filtered.length, filtered);
 
           const cards = filtered.length ? filtered.map(ev => {
+            if (!ev.Id || !ev.Title) {
+              console.warn(`[${timestamp}] [EventCards] Invalid event data:`, ev);
+              return null;
+            }
             const myReg = myRegs.find(r => r.EventLookupId === ev.Id);
             const isFull = ev.MaxSeats && ev.regCount >= ev.MaxSeats;
             const endDate = new Date(ev.EndTime);
@@ -212,7 +216,7 @@
                 React.createElement("div", { className: "panel-footer text-right" }, btn)
               )
             );
-          }) : [React.createElement("div", { key: "no", className: "alert alert-info text-center" }, "No events found. Please check Events list or permissions.")];
+          }).filter(card => card !== null) : [React.createElement("div", { key: "no", className: "alert alert-info text-center" }, "No events found. Please check Events list or permissions.")];
 
           return React.createElement("div", { className: "row" }, cards);
         };
@@ -277,8 +281,11 @@
         React.useEffect(() => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [useEffect] Loading state changed:`, { loading, events: events.length, myRegs: myRegs.length });
-          renderApp();
-        }, [loading, events, myRegs, search, showModal, unregId]);
+          // Force render after state update
+          setTimeout(() => {
+            renderApp();
+          }, 0);
+        }, [loading]);
 
         // useEffect for componentDidMount
         React.useEffect(() => {
@@ -971,6 +978,8 @@
             return;
           }
 
+          console.log(`[${timestamp}] [renderApp] Root element status:`, { exists: !!root, innerHTML: root.innerHTML.substring(0, 100) + "..." });
+
           $("#loading").hide();
 
           try {
@@ -981,6 +990,16 @@
                 root
               );
               console.log(`[${timestamp}] [renderApp] Loading state rendered`);
+              return;
+            }
+
+            if (!events.length) {
+              console.warn(`[${timestamp}] [renderApp] No events to render`, events);
+              ReactDOM.render(
+                React.createElement("div", { className: "alert alert-info text-center" }, "No events found. Please check Events list or permissions."),
+                root
+              );
+              console.log(`[${timestamp}] [renderApp] No events state rendered`);
               return;
             }
 
@@ -1002,6 +1021,7 @@
             );
             console.log(`[${timestamp}] [renderApp] Rendered successfully, checking DOM:`, {
               cards: !!document.querySelector(".row"),
+              panels: document.querySelectorAll(".panel").length,
               modal: !!document.querySelector(".modal"),
               backdrop: !!document.querySelector(".modal-backdrop")
             });
