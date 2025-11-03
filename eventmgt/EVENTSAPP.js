@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED REGISTRATION NOT ADDED TO LIST ===
+// === SP 2016 ON-PREM – FIXED REGISTRATION NOT SAVED, UI REFRESH ===
 (function () {
   'use strict';
 
@@ -278,7 +278,7 @@
             if (!this.userEmail || this.userEmail === 'unknown') {
               console.error(`[${timestamp}] [loadMyRegs] Invalid userEmail:`, this.userEmail);
               handleError("Load My Registrations", new Error("Invalid user email"), "Cannot load registrations due to invalid user email.");
-              this.setState({ myRegs: [] }, () => {
+              this.setState({ myRegs: [], loading: false }, () => {
                 this.renderCards();
                 resolve([]);
               });
@@ -312,14 +312,14 @@
                     };
                   });
                   console.log(`[${timestamp}] [loadMyRegs] My registrations loaded:`, registrations.length, registrations);
-                  this.setState({ myRegs: registrations }, () => {
+                  this.setState({ myRegs: registrations, loading: false }, () => {
                     this.renderCards();
                     resolve(registrations);
                   });
                 } catch (e) {
                   console.error(`[${timestamp}] [loadMyRegs] Error parsing registrations:`, e);
                   handleError("Parse Registrations", e, "Failed to parse user registrations.");
-                  this.setState({ myRegs: [] }, () => {
+                  this.setState({ myRegs: [], loading: false }, () => {
                     this.renderCards();
                     resolve([]);
                   });
@@ -337,7 +337,7 @@
                 if (xhr.status === 404) userMsg = "Registrations list not found. Verify list name.";
                 if (xhr.status === 400) userMsg = "Invalid query. Check UserEmail or EventLookupId configuration.";
                 handleError("Load My Registrations", xhr, userMsg);
-                this.setState({ myRegs: [] }, () => {
+                this.setState({ myRegs: [], loading: false }, () => {
                   this.renderCards();
                   resolve([]);
                 });
@@ -433,15 +433,20 @@
 
             if (!this.userEmail || this.userEmail === 'unknown') {
               console.error(`[${timestamp}] [register] Invalid userEmail:`, this.userEmail);
-              throw new Error("Invalid user email. Cannot proceed with registration.");
+              alert("Invalid user email. Cannot proceed with registration.");
+              return;
             }
 
             console.log(`[${timestamp}] [register] Before loadMyRegs...`);
-            const myRegs = await this.loadMyRegs().catch(err => {
+            let myRegs = [];
+            try {
+              myRegs = await this.loadMyRegs();
+              console.log(`[${timestamp}] [register] After loadMyRegs, registrations:`, myRegs.length, myRegs);
+            } catch (err) {
               console.error(`[${timestamp}] [register] loadMyRegs failed:`, err);
-              throw new Error("Failed to load registrations. Please try again.");
-            });
-            console.log(`[${timestamp}] [register] After loadMyRegs, registrations:`, myRegs.length);
+              alert("Failed to load registrations. Please try again.");
+              return;
+            }
 
             const localReg = myRegs.find(r => r.EventLookupId === ev.Id);
             if (localReg) {
@@ -468,7 +473,9 @@
             console.log(`[${timestamp}] [register] Refreshing digest before registration...`);
             this.digest = await refreshDigest(this.site);
             if (!this.digest) {
-              throw new Error("Failed to refresh digest for registration.");
+              console.error(`[${timestamp}] [register] Failed to refresh digest`);
+              alert("Failed to refresh form digest. Please try again.");
+              return;
             }
 
             if (!full) {
@@ -483,11 +490,17 @@
               } else {
                 console.log(`[${timestamp}] [register] User declined waitlist for Event ID:`, id);
                 alert("Waitlist registration cancelled.");
+                return;
               }
             }
+
+            // Ensure UI refresh after successful registration
+            console.log(`[${timestamp}] [register] Triggering UI refresh...`);
+            this.setState({ loading: false }, () => this.renderCards());
           } catch (err) {
             console.error(`[${timestamp}] [register] Unexpected error in registration:`, err);
             handleError("Register", err, "Failed to process registration. Please check permissions or list settings.");
+            this.setState({ loading: false }, () => this.renderCards());
           }
         }
 
@@ -516,9 +529,17 @@
               throw new Error("Invalid user email. Cannot create registration.");
             }
 
+            // Validate EventLookupIdId
+            const validEvent = await this.validateEventId(id);
+            if (!validEvent) {
+              console.error(`[${timestamp}] [createReg] Invalid Event ID ${id} in Events list`);
+              throw new Error(`Event ID ${id} does not exist.`);
+            }
+
             // Ensure fresh digest
             this.digest = await refreshDigest(this.site);
             if (!this.digest) {
+              console.error(`[${timestamp}] [createReg] Failed to refresh digest`);
               throw new Error("Failed to refresh digest for registration.");
             }
 
@@ -527,7 +548,7 @@
               type: "POST",
               data: JSON.stringify({
                 '__metadata': { type: 'SP.Data.RegistrationsListItem' },
-                EventLookupIdId: id, // Fixed for SP 2016 lookup field
+                EventLookupIdId: id, // SP 2016 lookup field
                 UserEmail: this.userEmail,
                 Status: status,
                 WaitlistPosition: pos !== null ? pos : null,
@@ -539,12 +560,13 @@
                 "X-RequestDigest": this.digest,
                 "Content-Type": "application/json; odata=verbose"
               },
-              timeout: 15000 // Increased timeout
+              timeout: 15000
             });
             console.log(`[${timestamp}] [createReg] Registration created successfully for Event ID ${id}:`, response);
             alert(status === 'Confirmed' ? 'Registered successfully!' : `Added to waitlist #${pos}`);
             await this.loadEvents();
             await this.loadMyRegs();
+            this.setState({ loading: false }, () => this.renderCards());
           } catch (xhr) {
             const msg = xhr.responseJSON?.error?.message?.value || "Registration failed";
             console.error(`[${timestamp}] [createReg] Error for Event ID ${id}:`, msg, {
@@ -560,6 +582,7 @@
               if (existingReg) {
                 console.log(`[${timestamp}] [createReg] Confirmed existing registration on retry:`, existingReg);
                 alert("You are already " + (existingReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${existingReg.WaitlistPosition})`));
+                this.setState({ loading: false }, () => this.renderCards());
               } else {
                 console.log(`[${timestamp}] [createReg] No existing registration on retry. Attempting again...`);
                 await this.createReg(id, status, pos, title, retryCount + 1);
@@ -571,8 +594,30 @@
               if (xhr.status === 404) userMsg = "Registrations list not found. Verify list name.";
               if (xhr.status === 409) userMsg = "Duplicate registration detected. Please check existing registrations.";
               handleError("Create Registration", xhr, userMsg);
+              this.setState({ loading: false }, () => this.renderCards());
             }
           }
+        }
+
+        async validateEventId(id) {
+          const timestamp = new Date().toISOString();
+          console.log(`[${timestamp}] [validateEventId] Validating Event ID:`, id);
+
+          return new Promise(resolve => {
+            $.ajax({
+              url: this.site + "/_api/web/lists/getbytitle('Events')/items(" + id + ")?$select=Id",
+              headers: { Accept: "application/json; odata=verbose" },
+              timeout: 5000,
+              success: d => {
+                console.log(`[${timestamp}] [validateEventId] Event ID ${id} is valid`);
+                resolve(true);
+              },
+              error: xhr => {
+                console.warn(`[${timestamp}] [validateEventId] Event ID ${id} is invalid:`, xhr);
+                resolve(false);
+              }
+            });
+          });
         }
 
         getNextWaitlistPosition(id) {
@@ -652,6 +697,7 @@
             await this.loadMyRegs();
             console.log(`[${timestamp}] [unregister] UI updated after deletion`);
             alert("Registration cancelled successfully.");
+            this.setState({ loading: false }, () => this.renderCards());
           } catch (xhr) {
             console.error(`[${timestamp}] [unregister] Error unregistering for Event ID ${id}:`, xhr);
             let userMsg = "Failed to cancel registration.";
@@ -659,6 +705,7 @@
             if (xhr.status === 404) userMsg = "Registration not found.";
             if (xhr.status === 400) userMsg = "Invalid request. Please check list settings.";
             handleError("Unregister", xhr, userMsg);
+            this.setState({ loading: false }, () => this.renderCards());
           }
         }
 
@@ -717,7 +764,7 @@
                 React.createElement("div", { className: "panel-body" },
                   React.createElement("p", null, "Time: ", new Date(ev.StartTime).toLocaleString(), " - ", new Date(ev.EndTime).toLocaleString()),
                   React.createElement("p", null, "Room: ", ev.Room || "TBD"),
-                  React.createElement("p", null, "Instructor: ", ev.Instructor?.Title || " лаз"),
+                  React.createElement("p", null, "Instructor: ", ev.Instructor?.Title || "TBD"),
                   React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
                 ),
                 React.createElement("div", { className: "panel-footer text-right" }, btn)
