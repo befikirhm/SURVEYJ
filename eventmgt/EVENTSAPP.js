@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED EVENTS NOT LOADING, FUNCTIONAL COMPONENT ===
+// === SP 2016 ON-PREM – FIXED NO CARDS, FUNCTIONAL COMPONENT ===
 (function () {
   'use strict';
 
@@ -18,7 +18,8 @@
     if (root) {
       ReactDOM.render(React.createElement("div", { className: "alert alert-danger" }, msg), root);
     } else {
-      alert(msg);
+      console.error(`[${timestamp}] [handleError] #root element not found`);
+      alert(msg + "\nError: #root element not found in DOM.");
     }
   }
 
@@ -135,10 +136,25 @@
         const userEmailRef = React.useRef(ctx.userEmail);
         const digestRef = React.useRef(ctx.digest);
 
+        // useEffect for rendering cards when state changes
+        React.useEffect(() => {
+          const timestamp = new Date().toISOString();
+          console.log(`[${timestamp}] [useEffect] State changed, rendering cards:`, { events: events.length, search, loading });
+          renderCards();
+        }, [events, search, myRegs, loading]);
+
         // useEffect for componentDidMount
         React.useEffect(() => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [useEffect] Initializing component...`);
+
+          // Verify #root exists
+          const root = document.getElementById('root');
+          if (!root) {
+            console.error(`[${timestamp}] [useEffect] #root element not found in DOM`);
+            alert("Error: #root element not found in DOM. Check EventsDashboard.aspx.");
+            return;
+          }
 
           appInstance = {
             unregister,
@@ -164,7 +180,6 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [handleSearch] Search updated:`, e.target.value);
           setSearch(e.target.value.toLowerCase());
-          if (!loading) renderCards();
         };
 
         const checkAdmin = (cb) => {
@@ -197,11 +212,16 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [renderAdminLinks] Rendering admin links...`);
           try {
+            const adminRoot = document.getElementById("adminLinks");
+            if (!adminRoot) {
+              console.error(`[${timestamp}] [renderAdminLinks] #adminLinks element not found`);
+              return;
+            }
             const links = React.createElement("div", null,
               React.createElement("a", { href: "AdminDashboard.aspx", className: "btn btn-warning btn-block mb-2" }, "Admin Dashboard"),
               React.createElement("a", { href: "Survey.aspx", className: "btn btn-info btn-block" }, "Design Survey")
             );
-            ReactDOM.render(links, document.getElementById("adminLinks"));
+            ReactDOM.render(links, adminRoot);
             console.log(`[${timestamp}] [renderAdminLinks] Admin links rendered`);
           } catch (e) {
             handleError("Render Admin Links", e, "Failed to render admin links.");
@@ -227,8 +247,8 @@
                   return {
                     Id: ev.Id,
                     Title: ev.Title || "Untitled Event",
-                    StartTime: ev.StartDate,
-                    EndTime: ev.EndDate,
+                    StartTime: ev.StartDate || new Date().toISOString(),
+                    EndTime: ev.EndDate || new Date().toISOString(),
                     Room: ev.Location || "TBD",
                     Instructor: ev.Instructor || "TBD",
                     MaxSeats: ev.MaxSeats || null,
@@ -253,20 +273,21 @@
                 Promise.all(evs.map(e => getRegCount(e.Id).then(c => ({ ...e, regCount: c }))))
                   .then(processed => {
                     console.log(`[${timestamp}] [loadEvents] Events with reg counts:`, processed.length);
-                    setEvents(processed);
+                    setEvents([...processed]); // Ensure new array to trigger state update
                     setLoading(false);
                     $("#loading").hide();
                     renderCards();
                   })
                   .catch(err => {
                     console.warn(`[${timestamp}] [loadEvents] Error processing reg counts:`, err);
-                    setEvents(evs.map(e => ({ ...e, regCount: 0 })));
+                    setEvents([...evs.map(e => ({ ...e, regCount: 0 }))]);
                     setLoading(false);
                     $("#loading").hide();
                     renderCards();
                   });
               } catch (err) {
                 handleError("Parse Events", err, "Failed to parse events data. Check list columns or response format.");
+                setEvents([]);
                 setLoading(false);
                 $("#loading").hide();
                 renderCards();
@@ -334,7 +355,7 @@
                     };
                   });
                   console.log(`[${timestamp}] [loadMyRegs] My registrations loaded:`, registrations.length, registrations);
-                  setMyRegs(registrations);
+                  setMyRegs([...registrations]); // Ensure new array
                   setLoading(false);
                   renderCards();
                   resolve(registrations);
@@ -744,18 +765,25 @@
 
         const renderCards = () => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [renderCards] Rendering event cards...`);
+          console.log(`[${timestamp}] [renderCards] Rendering event cards...`, { events: events.length, search, loading });
 
           if (loading) {
             console.log(`[${timestamp}] [renderCards] Still loading, skipping render`);
             return;
           }
 
+          const root = document.getElementById('root');
+          if (!root) {
+            console.error(`[${timestamp}] [renderCards] #root element not found`);
+            alert("Error: #root element not found in DOM. Check EventsDashboard.aspx.");
+            return;
+          }
+
           const filtered = events.filter(e =>
-            e.Title.toLowerCase().includes(search) ||
-            (e.Room && e.Room.toLowerCase().includes(search))
+            (e.Title || "").toLowerCase().includes(search) ||
+            (e.Room || "").toLowerCase().includes(search)
           );
-          console.log(`[${timestamp}] [renderCards] Filtered events:`, filtered.length);
+          console.log(`[${timestamp}] [renderCards] Filtered events:`, filtered.length, filtered);
 
           const cards = filtered.length ? filtered.map(ev => {
             const myReg = myRegs.find(r => r.EventLookupId === ev.Id);
@@ -793,9 +821,9 @@
 
             return React.createElement("div", { key: ev.Id, className: "col-md-6 mb-3" },
               React.createElement("div", { className: panelCls },
-                React.createElement("div", { className: "panel-heading" }, ev.Title),
+                React.createElement("div", { className: "panel-heading" }, ev.Title || "Untitled Event"),
                 React.createElement("div", { className: "panel-body" },
-                  React.createElement("p", null, "Time: ", new Date(ev.StartTime).toLocaleString(), " - ", new Date(ev.EndTime).toLocaleString()),
+                  React.createElement("p", null, "Time: ", ev.StartTime ? new Date(ev.StartTime).toLocaleString() : "TBD", " - ", ev.EndTime ? new Date(ev.EndTime).toLocaleString() : "TBD"),
                   React.createElement("p", null, "Room: ", ev.Room || "TBD"),
                   React.createElement("p", null, "Instructor: ", ev.Instructor || "TBD"),
                   React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
@@ -806,11 +834,23 @@
           }) : [React.createElement("div", { key: "no", className: "alert alert-info" }, "No events found. Please check Events list or permissions.")];
 
           console.log(`[${timestamp}] [renderCards] Rendering ${cards.length} cards`);
-          ReactDOM.render(React.createElement("div", { className: "row" }, cards), document.getElementById("root"));
+          try {
+            ReactDOM.render(React.createElement("div", { className: "row" }, cards), root);
+          } catch (e) {
+            console.error(`[${timestamp}] [renderCards] ReactDOM.render failed:`, e);
+            handleError("Render Cards", e, "Failed to render event cards. Check React version or DOM setup.");
+          }
         };
 
         return null;
       };
+
+      const root = document.getElementById('root');
+      if (!root) {
+        console.error(`[${timestamp}] [App Init] #root element not found in DOM`);
+        alert("Error: #root element not found in DOM. Check EventsDashboard.aspx.");
+        return;
+      }
 
       $(document).on('click', '#confirmUnreg', () => {
         const timestamp = new Date().toISOString();
@@ -824,7 +864,7 @@
       });
 
       const app = React.createElement(App);
-      ReactDOM.render(app, document.getElementById("root"));
+      ReactDOM.render(app, root);
       $("#loading").show();
       console.log(`[${timestamp}] [App Init] App rendered, loading shown`);
 
