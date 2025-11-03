@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED EVENT CARDS RENDERING ===
+// === SP 2016 ON-PREM – FIXED EVENT CARDS RENDERING FOR REACT 16.8.6 ===
 (function () {
   'use strict';
 
@@ -14,9 +14,17 @@
     });
     const root = document.getElementById('root');
     if (root) {
-      root.innerHTML = ''; // Clear root to prevent stale content
-      ReactDOM.render(React.createElement("div", { className: "alert alert-danger" }, `${userMsg}\n\nCheck F12 Console for details.`), root);
-      console.log(`[${timestamp}] [handleError] Error rendered to #root`);
+      root.innerHTML = '';
+      try {
+        ReactDOM.render(
+          React.createElement("div", { className: "alert alert-danger" }, `${userMsg}\n\nCheck F12 Console for details.`),
+          root
+        );
+        console.log(`[${timestamp}] [handleError] Error rendered to #root`);
+      } catch (e) {
+        console.error(`[${timestamp}] [handleError] Failed to render error:`, e);
+        alert(`${userMsg}\nError: Failed to render to DOM. Check console.`);
+      }
     } else {
       console.error(`[${timestamp}] [handleError] #root element not found`);
       alert(`${userMsg}\nError: #root element not found in DOM.`);
@@ -110,8 +118,10 @@
   $(document).ready(async function () {
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}] [App Init] DOM Ready. Initializing...`);
+    console.log(`[${timestamp}] [App Init] React version:`, React.version);
 
     let appInstance = null;
+    let reactRoot = null; // For React 17 createRoot
 
     try {
       const ctx = await getContext();
@@ -185,50 +195,50 @@
 
           const cards = filtered.length ? filtered.map((ev, index) => {
             console.log(`[${timestamp}] [EventCards] Processing event ${index + 1}/${filtered.length}:`, ev);
-            const myReg = myRegs.find(r => r.EventLookupId === ev.Id);
-            const isFull = ev.MaxSeats && ev.regCount >= ev.MaxSeats;
-            const endDate = new Date(ev.EndTime);
-            const now = new Date();
-            const isPast = endDate.getTime() < now.getTime();
-            const canReg = ev.AllowRegistration && !isPast && !ev.IsOver;
-
-            console.log(`[${timestamp}] [EventCards] Event ID ${ev.Id}:`, {
-              title: ev.Title,
-              isFull,
-              isPast,
-              canReg,
-              registered: !!myReg,
-              status: myReg?.Status
-            });
-
-            const panelCls = isFull || isPast || ev.IsOver ? "panel panel-default card-full" + (isPast ? " card-past" : "") : "panel panel-primary";
-
-            let btn;
-            if (!canReg) {
-              btn = React.createElement("button", { className: "btn btn-default btn-sm disabled" }, isFull ? "Full" : "Closed");
-            } else if (myReg) {
-              const status = myReg.Status === 'Confirmed'
-                ? React.createElement("button", { className: "btn btn-success btn-sm disabled" }, "Registered")
-                : React.createElement("button", { className: "btn btn-warning btn-sm disabled" }, `Waitlist #${myReg.WaitlistPosition}`);
-              btn = React.createElement("div", null, status,
-                React.createElement("button", { className: "btn btn-danger btn-sm", onClick: () => showUnreg(ev.Id) }, "Cancel")
-              );
-            } else {
-              btn = React.createElement("div", null,
-                React.createElement("button", { className: "btn btn-success btn-sm", onClick: () => register(ev.Id) }, isFull ? "Join Waitlist" : "Register"),
-                React.createElement("button", { className: "btn btn-info btn-sm", onClick: () => refreshMyRegs() }, "Refresh")
-              );
-            }
-
             try {
-              return React.createElement("div", { key: ev.Id, className: "col-md-6 mb-3" },
+              const myReg = myRegs.find(r => r.EventLookupId === ev.Id);
+              const isFull = ev.MaxSeats && ev.regCount >= ev.MaxSeats;
+              const endDate = new Date(ev.EndTime);
+              const now = new Date();
+              const isPast = endDate.getTime() < now.getTime();
+              const canReg = ev.AllowRegistration && !isPast && !ev.IsOver;
+
+              console.log(`[${timestamp}] [EventCards] Event ID ${ev.Id}:`, {
+                title: ev.Title,
+                isFull,
+                isPast,
+                canReg,
+                registered: !!myReg,
+                status: myReg?.Status
+              });
+
+              const panelCls = isFull || isPast || ev.IsOver ? "panel panel-default card-full" + (isPast ? " card-past" : "") : "panel panel-primary";
+
+              let btn;
+              if (!canReg) {
+                btn = React.createElement("button", { className: "btn btn-default btn-sm disabled" }, isFull ? "Full" : "Closed");
+              } else if (myReg) {
+                const status = myReg.Status === 'Confirmed'
+                  ? React.createElement("button", { className: "btn btn-success btn-sm disabled" }, "Registered")
+                  : React.createElement("button", { className: "btn btn-warning btn-sm disabled" }, `Waitlist #${myReg.WaitlistPosition}`);
+                btn = React.createElement("div", null, status,
+                  React.createElement("button", { className: "btn btn-danger btn-sm", onClick: () => showUnreg(ev.Id) }, "Cancel")
+                );
+              } else {
+                btn = React.createElement("div", null,
+                  React.createElement("button", { className: "btn btn-success btn-sm", onClick: () => register(ev.Id) }, isFull ? "Join Waitlist" : "Register"),
+                  React.createElement("button", { className: "btn btn-info btn-sm", onClick: () => refreshMyRegs() }, "Refresh")
+                );
+              }
+
+              return React.createElement("div", { key: `event-${ev.Id}`, className: "col-md-6 mb-3" },
                 React.createElement("div", { className: panelCls },
                   React.createElement("div", { className: "panel-heading" }, ev.Title || "Untitled Event"),
                   React.createElement("div", { className: "panel-body" },
                     React.createElement("p", null, "Time: ", ev.StartTime ? new Date(ev.StartTime).toLocaleString() : "TBD", " - ", ev.EndTime ? new Date(ev.EndTime).toLocaleString() : "TBD"),
                     React.createElement("p", null, "Room: ", ev.Room || "TBD"),
                     React.createElement("p", null, "Instructor: ", ev.Instructor || "TBD"),
-                    React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
+                    React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.Max席 || "Unlimited")
                   ),
                   React.createElement("div", { className: "panel-footer text-right" }, btn)
                 )
@@ -237,7 +247,7 @@
               console.error(`[${timestamp}] [EventCards] Failed to create card for Event ID ${ev.Id}:`, e);
               return null;
             }
-          }).filter(card => card !== null) : [React.createElement("div", { key: "no", className: "alert alert-info text-center" }, "No valid events found. Please check Events list or permissions.")];
+          }).filter(card => card !== null) : [React.createElement("div", { key: "no-events", className: "alert alert-info text-center" }, "No valid events found. Please check Events list or permissions.")];
 
           console.log(`[${timestamp}] [EventCards] Generated ${cards.length} cards`);
 
@@ -305,14 +315,14 @@
           ] : null;
         };
 
-        // Dedicated useEffect for forcing render
+        // Force render on state changes
         React.useEffect(() => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [useEffect] State changed:`, { loading, events: events.length, myRegs: myRegs.length });
           const timer = setTimeout(() => {
-            console.log(`[${timestamp}] [useEffect] Forcing render after 200ms delay`);
+            console.log(`[${timestamp}] [useEffect] Forcing render after 300ms delay`);
             renderApp();
-          }, 200);
+          }, 300);
           return () => clearTimeout(timer);
         }, [loading, events, myRegs]);
 
@@ -335,7 +345,7 @@
             showUnreg,
             register
           };
-          window.appInstance = appInstance; // Expose for debugging
+          window.appInstance = appInstance;
 
           $('#searchBox').on('input', handleSearch);
 
@@ -417,7 +427,12 @@
               React.createElement("a", { href: "AdminDashboard.aspx", className: "btn btn-warning btn-block mb-2" }, "Admin Dashboard"),
               React.createElement("a", { href: "Survey.aspx", className: "btn btn-info btn-block" }, "Design Survey")
             );
-            ReactDOM.render(links, adminRoot);
+            if (ReactDOM.createRoot) {
+              const root = ReactDOM.createRoot(adminRoot);
+              root.render(links);
+            } else {
+              ReactDOM.render(links, adminRoot);
+            }
             console.log(`[${timestamp}] [renderAdminLinks] Admin links rendered`);
           } catch (e) {
             handleError("Render Admin Links", e, "Failed to render admin links.");
@@ -591,6 +606,7 @@
           console.log(`[${timestamp}] [getRegCount] Getting registration count for Event ID:`, id);
 
           return new Promise(r => {
+ожалуй
             $.ajax({
               url: siteRef.current + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and Status eq 'Confirmed'&$select=Id",
               headers: { Accept: "application/json; odata=verbose" },
@@ -1011,14 +1027,16 @@
             return;
           }
 
-          // Clear root and validate
+          // Clear and validate root
           root.innerHTML = '';
-          console.log(`[${timestamp}] [renderApp] Root cleared, status:`, { exists: !!root, innerHTML: root.innerHTML });
-
-          // Force visibility
           root.style.display = 'block';
           root.style.visibility = 'visible';
-          console.log(`[${timestamp}] [renderApp] Root CSS:`, { display: root.style.display, visibility: root.style.visibility });
+          console.log(`[${timestamp}] [renderApp] Root cleared, status:`, {
+            exists: !!root,
+            innerHTML: root.innerHTML,
+            display: root.style.display,
+            visibility: root.style.visibility
+          });
 
           $("#loading").hide();
           console.log(`[${timestamp}] [renderApp] Loading element hidden`);
@@ -1026,10 +1044,13 @@
           try {
             if (loading) {
               console.log(`[${timestamp}] [renderApp] Still loading, rendering loading state`);
-              ReactDOM.render(
-                React.createElement("div", { className: "alert alert-info text-center" }, "Loading events..."),
-                root
-              );
+              const loadingElement = React.createElement("div", { className: "alert alert-info text-center" }, "Loading events...");
+              if (ReactDOM.createRoot) {
+                reactRoot = reactRoot || ReactDOM.createRoot(root);
+                reactRoot.render(loadingElement);
+              } else {
+                ReactDOM.render(loadingElement, root);
+              }
               console.log(`[${timestamp}] [renderApp] Loading state rendered, DOM check:`, {
                 rootContent: root.innerHTML.substring(0, 100) + "..."
               });
@@ -1038,10 +1059,13 @@
 
             if (!events.length) {
               console.warn(`[${timestamp}] [renderApp] No events to render`, events);
-              ReactDOM.render(
-                React.createElement("div", { className: "alert alert-info text-center" }, "No events found. Please check Events list or permissions."),
-                root
-              );
+              const noEventsElement = React.createElement("div", { className: "alert alert-info text-center" }, "No events found. Please check Events list or permissions.");
+              if (ReactDOM.createRoot) {
+                reactRoot = reactRoot || ReactDOM.createRoot(root);
+                reactRoot.render(noEventsElement);
+              } else {
+                ReactDOM.render(noEventsElement, root);
+              }
               console.log(`[${timestamp}] [renderApp] No events state rendered, DOM check:`, {
                 rootContent: root.innerHTML.substring(0, 100) + "..."
               });
@@ -1049,22 +1073,25 @@
             }
 
             console.log(`[${timestamp}] [renderApp] Rendering EventCards with ${events.length} events`);
-            ReactDOM.render(
-              React.createElement(ErrorBoundary, null,
-                React.createElement("div", { className: "event-container" },
-                  React.createElement(EventCards, {
-                    events,
-                    myRegs,
-                    search,
-                    register,
-                    showUnreg,
-                    refreshMyRegs
-                  }),
-                  React.createElement(UnregModal)
-                )
-              ),
-              root
+            const appElement = React.createElement(ErrorBoundary, null,
+              React.createElement("div", { className: "event-container" },
+                React.createElement(EventCards, {
+                  events,
+                  myRegs,
+                  search,
+                  register,
+                  showUnreg,
+                  refreshMyRegs
+                }),
+                React.createElement(UnregModal)
+              )
             );
+            if (ReactDOM.createRoot) {
+              reactRoot = reactRoot || ReactDOM.createRoot(root);
+              reactRoot.render(appElement);
+            } else {
+              ReactDOM.render(appElement, root);
+            }
             console.log(`[${timestamp}] [renderApp] Rendered successfully, checking DOM:`, {
               rootContent: root.innerHTML.substring(0, 100) + "...",
               eventContainer: !!document.querySelector(".event-container"),
@@ -1076,11 +1103,11 @@
 
             // Force DOM repaint
             root.style.display = 'none';
-            root.offsetHeight; // Trigger reflow
+            root.offsetHeight;
             root.style.display = 'block';
             console.log(`[${timestamp}] [renderApp] Forced DOM repaint`);
           } catch (e) {
-            console.error(`[${timestamp}] [renderApp] ReactDOM.render failed:`, e);
+            console.error(`[${timestamp}] [renderApp] Render failed:`, e);
             handleError("Render App", e, "Failed to render event cards or modal. Check React version or DOM setup.");
             setLoading(false);
           }
@@ -1096,15 +1123,27 @@
         return;
       }
 
-      // Ensure root is visible
       root.style.display = 'block';
       root.style.visibility = 'visible';
-      console.log(`[${timestamp}] [App Init] Root initialized, CSS:`, { display: root.style.display, visibility: root.style.visibility });
+      console.log(`[${timestamp}] [App Init] Root initialized, CSS:`, {
+        display: root.style.display,
+        visibility: root.style.visibility
+      });
 
       const app = React.createElement(App);
-      ReactDOM.render(app, root);
-      $("#loading").show();
-      console.log(`[${timestamp}] [App Init] App rendered, loading shown`);
+      try {
+        if (ReactDOM.createRoot) {
+          reactRoot = ReactDOM.createRoot(root);
+          reactRoot.render(app);
+        } else {
+          ReactDOM.render(app, root);
+        }
+        $("#loading").show();
+        console.log(`[${timestamp}] [App Init] App rendered, loading shown`);
+      } catch (e) {
+        console.error(`[${timestamp}] [App Init] Failed to render app:`, e);
+        handleError("App Init", e, "Failed to initialize app. Check React CDN or console.");
+      }
     } catch (err) {
       handleError("App Init", err, "Failed to initialize app.");
     }
