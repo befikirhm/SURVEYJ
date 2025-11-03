@@ -22,6 +22,26 @@
     }
   }
 
+  // === REFRESH DIGEST ===
+  async function refreshDigest(site) {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [refreshDigest] Fetching new digest...`);
+    try {
+      const resp = await $.ajax({
+        url: site + "/_api/contextinfo",
+        method: "POST",
+        headers: { Accept: "application/json; odata=verbose" },
+        timeout: 5000
+      });
+      const digest = resp.d.GetContextWebInformation.FormDigestValue;
+      console.log(`[${timestamp}] [refreshDigest] New digest:`, digest.substring(0, 20) + "...");
+      return digest;
+    } catch (e) {
+      console.error(`[${timestamp}] [refreshDigest] Failed to refresh digest:`, e);
+      return null;
+    }
+  }
+
   // === GET CONTEXT ===
   async function getContext() {
     const timestamp = new Date().toISOString();
@@ -66,13 +86,8 @@
         console.log(`[${timestamp}] [getContext] Fetching digest...`);
         digest = $("#FormDigest1").val() || $("#__REQUESTDIGEST").val() || '';
         if (!digest) {
-          console.warn(`[${timestamp}] [getContext] FormDigest1 not found, trying contextinfo...`);
-          const resp = await $.ajax({
-            url: site + "/_api/contextinfo",
-            method: "POST",
-            headers: { Accept: "application/json; odata=verbose" }
-          });
-          digest = resp.d.GetContextWebInformation.FormDigestValue;
+          console.warn(`[${timestamp}] [getContext] FormDigest1 not found, refreshing digest...`);
+          digest = await refreshDigest(site);
         }
         console.log(`[${timestamp}] [getContext] Digest loaded:`, digest.substring(0, 20) + "...");
       } catch (e) {
@@ -419,6 +434,13 @@
             const full = ev.MaxSeats && count >= ev.MaxSeats;
             console.log(`[${timestamp}] [register] Event ID ${id} - Seats: ${count}/${ev.MaxSeats || 'Unlimited'}, Full: ${full}`);
 
+            // Refresh digest before POST
+            console.log(`[${timestamp}] [register] Refreshing digest before registration...`);
+            this.digest = await refreshDigest(this.site);
+            if (!this.digest) {
+              throw new Error("Failed to refresh digest for registration.");
+            }
+
             if (!full) {
               console.log(`[${timestamp}] [register] Creating confirmed registration...`);
               await this.createReg(id, 'Confirmed', null, ev.Title);
@@ -435,7 +457,7 @@
             }
           } catch (err) {
             console.error(`[${timestamp}] [register] Unexpected error in registration:`, err);
-            handleError("Register", err, "Failed to process registration. Please try again.");
+            handleError("Register", err, "Failed to process registration. Please check permissions or list settings.");
           }
         }
 
@@ -453,6 +475,13 @@
           });
 
           try {
+            // Validate EventLookupId
+            const eventExists = this.state.events.some(e => e.Id === id);
+            if (!eventExists) {
+              console.error(`[${timestamp}] [createReg] Event ID ${id} does not exist in Events list`);
+              throw new Error(`Event ID ${id} not found.`);
+            }
+
             const response = await $.ajax({
               url: this.site + "/_api/web/lists/getbytitle('Registrations')/items",
               type: "POST",
@@ -498,7 +527,7 @@
             } else {
               let userMsg = `Failed to register: ${msg}`;
               if (xhr.status === 403) userMsg = "Access denied. Please check your permissions.";
-              if (xhr.status === 400) userMsg = "Invalid request. Please check list settings.";
+              if (xhr.status === 400) userMsg = "Invalid request. Please check list settings or Event ID.";
               handleError("Create Registration", xhr, userMsg);
             }
           }
@@ -540,6 +569,13 @@
           $("#unregModal").modal("hide");
 
           try {
+            // Refresh digest before DELETE
+            console.log(`[${timestamp}] [unregister] Refreshing digest before unregister...`);
+            this.digest = await refreshDigest(this.site);
+            if (!this.digest) {
+              throw new Error("Failed to refresh digest for unregister.");
+            }
+
             const query = this.site + "/_api/web/lists/getbytitle('Registrations')/items" +
                           "?$filter=EventLookupId eq " + id + " and UserEmail eq '" + encodeURIComponent(this.userEmail) + "'" +
                           "&$select=Id,EventLookupId/Id&$expand=EventLookupId";
@@ -562,21 +598,24 @@
               url: this.site + "/_api/web/lists/getbytitle('Registrations')/items(" + reg.Id + ")",
               type: "POST",
               headers: {
+                Accept: "application/json; odata=verbose",
                 "X-RequestDigest": this.digest,
                 "If-Match": "*",
                 "X-HTTP-Method": "DELETE"
               },
               timeout: 5000
             });
-            console.log(`[${timestamp}] [unregister] Registration deleted for Event ID:`, id);
-            alert("Registration cancelled successfully.");
+            console.log(`[${timestamp}] [unregister] Registration deleted successfully for Event ID:`, id);
             await this.loadEvents();
             await this.loadMyRegs();
+            console.log(`[${timestamp}] [unregister] UI updated after deletion`);
+            alert("Registration cancelled successfully.");
           } catch (xhr) {
             console.error(`[${timestamp}] [unregister] Error unregistering for Event ID ${id}:`, xhr);
             let userMsg = "Failed to cancel registration.";
             if (xhr.status === 403) userMsg = "Access denied. Please check your permissions.";
             if (xhr.status === 404) userMsg = "Registration not found.";
+            if (xhr.status === 400) userMsg = "Invalid request. Please check list settings.";
             handleError("Unregister", xhr, userMsg);
           }
         }
