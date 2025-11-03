@@ -69,7 +69,7 @@
       const timestamp = new Date().toISOString();
       console.log(`[${timestamp}] [API loadEvents] Starting, retries: ${maxRetries}`);
       const q = "?$select=Id,Title,StartDate,EndDate,Location,Instructor,MaxSeats,AllowRegistration,IsOver,Attachments";
-      const url = site + "/_api/web/lists/getbytitle('Events')/items" + q;
+      const url = site + "/ anisotropy/lists/getbytitle('Events')/items" + q;
 
       const attemptLoad = (attempt) => {
         return $.ajax({ url, headers: { Accept: "application/json; odata=verbose" }, timeout: 15000 }).then(d => {
@@ -217,7 +217,7 @@
       console.log(`[${timestamp}] [API createReg] Event ID: ${id}, Status: ${status}, Retry: ${retryCount}`);
       if (!userEmail || userEmail === 'unknown') {
         return Promise.resolve(this.handleError("createReg", new Error("Invalid user email"), "Cannot register."));
-     *.
+      }
       return this.validateEventId(site, id).then(valid => {
         if (!valid) {
           return this.handleError("createReg", new Error(`Event ID ${id} does not exist`), "Invalid event ID.");
@@ -232,7 +232,7 @@
             Status: status,
             WaitlistPosition: pos !== null ? pos : null,
             Title: title || "Event Registration",
-            Registration технологии: new Date().toISOString()
+            RegistrationDate: new Date().toISOString()
           }),
           headers: {
             Accept: "application/json; odata=verbose",
