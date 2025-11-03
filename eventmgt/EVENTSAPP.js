@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED NO CARDS, FUNCTIONAL COMPONENT ===
+// === SP 2016 ON-PREM – FIXED LOADING ISSUE, FUNCTIONAL COMPONENT ===
 (function () {
   'use strict';
 
@@ -12,14 +12,12 @@
       response: error.responseJSON || error.responseText || "No response",
       stack: error.stack || "No stack"
     });
-    $("#loading").hide();
-    const msg = `${userMsg}\n\nCheck F12 Console for details.`;
     const root = document.getElementById('root');
     if (root) {
-      ReactDOM.render(React.createElement("div", { className: "alert alert-danger" }, msg), root);
+      ReactDOM.render(React.createElement("div", { className: "alert alert-danger" }, `${userMsg}\n\nCheck F12 Console for details.`), root);
     } else {
       console.error(`[${timestamp}] [handleError] #root element not found`);
-      alert(msg + "\nError: #root element not found in DOM.");
+      alert(`${userMsg}\nError: #root element not found in DOM.`);
     }
   }
 
@@ -148,7 +146,6 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [useEffect] Initializing component...`);
 
-          // Verify #root exists
           const root = document.getElementById('root');
           if (!root) {
             console.error(`[${timestamp}] [useEffect] #root element not found in DOM`);
@@ -165,14 +162,36 @@
 
           $('#searchBox').on('input', handleSearch);
 
+          // Timeout to prevent infinite loading
+          const timeout = setTimeout(() => {
+            if (loading) {
+              console.error(`[${timestamp}] [useEffect] Loading timeout after 30s`);
+              setLoading(false);
+              handleError("Load Timeout", new Error("Loading took too long"), "Loading timed out. Please refresh the page.");
+            }
+          }, 30000);
+
           checkAdmin(() => {
-            console.log(`[${timestamp}] [useEffect] Admin check done. Loading events...`);
-            loadEvents();
-            loadMyRegs();
+            console.log(`[${timestamp}] [useEffect] Admin check done. Loading events and registrations...`);
+            Promise.all([loadEvents(), loadMyRegs()])
+              .then(() => {
+                console.log(`[${timestamp}] [useEffect] All data loaded, clearing timeout`);
+                clearTimeout(timeout);
+                setLoading(false);
+                renderCards();
+              })
+              .catch(err => {
+                console.error(`[${timestamp}] [useEffect] Error loading data:`, err);
+                clearTimeout(timeout);
+                setLoading(false);
+                handleError("Load Data", err, "Failed to load events or registrations.");
+                renderCards();
+              });
           });
 
           return () => {
             $('#searchBox').off('input', handleSearch);
+            clearTimeout(timeout);
           };
         }, []);
 
@@ -232,83 +251,76 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [loadEvents] STARTED`);
 
-          const q = "?$select=Id,Title,StartDate,EndDate,Location,Instructor,MaxSeats,AllowRegistration,IsOver,Attachments";
-          const url = siteRef.current + "/_api/web/lists/getbytitle('Events')/items" + q;
+          return new Promise((resolve, reject) => {
+            const q = "?$select=Id,Title,StartDate,EndDate,Location,Instructor,MaxSeats,AllowRegistration,IsOver,Attachments";
+            const url = siteRef.current + "/_api/web/lists/getbytitle('Events')/items" + q;
 
-          $.ajax({
-            url,
-            headers: { Accept: "application/json; odata=verbose" },
-            timeout: 15000,
-            success: d => {
-              console.log(`[${timestamp}] [loadEvents] Raw response:`, d);
-              try {
-                let evs = (d.d?.results || []).map(ev => {
-                  console.log(`[${timestamp}] [loadEvents] Processing event:`, ev.Id, ev.Title);
-                  return {
-                    Id: ev.Id,
-                    Title: ev.Title || "Untitled Event",
-                    StartTime: ev.StartDate || new Date().toISOString(),
-                    EndTime: ev.EndDate || new Date().toISOString(),
-                    Room: ev.Location || "TBD",
-                    Instructor: ev.Instructor || "TBD",
-                    MaxSeats: ev.MaxSeats || null,
-                    AllowRegistration: ev.AllowRegistration === true || ev.AllowRegistration === "1",
-                    IsOver: ev.IsOver === true || ev.IsOver === "1",
-                    Attachments: ev.Attachments || false,
-                    regCount: 0
-                  };
-                }).sort((a, b) => new Date(a.StartTime) - new Date(b.EndTime));
+            $.ajax({
+              url,
+              headers: { Accept: "application/json; odata=verbose" },
+              timeout: 15000,
+              success: d => {
+                console.log(`[${timestamp}] [loadEvents] Raw response:`, d);
+                try {
+                  let evs = (d.d?.results || []).map(ev => {
+                    console.log(`[${timestamp}] [loadEvents] Processing event:`, ev.Id, ev.Title);
+                    return {
+                      Id: ev.Id,
+                      Title: ev.Title || "Untitled Event",
+                      StartTime: ev.StartDate || new Date().toISOString(),
+                      EndTime: ev.EndDate || new Date().toISOString(),
+                      Room: ev.Location || "TBD",
+                      Instructor: ev.Instructor || "TBD",
+                      MaxSeats: ev.MaxSeats || null,
+                      AllowRegistration: ev.AllowRegistration === true || ev.AllowRegistration === "1",
+                      IsOver: ev.IsOver === true || ev.IsOver === "1",
+                      Attachments: ev.Attachments || false,
+                      regCount: 0
+                    };
+                  }).sort((a, b) => new Date(a.StartTime) - new Date(b.EndTime));
 
-                console.log(`[${timestamp}] [loadEvents] Events processed:`, evs.length, evs);
+                  console.log(`[${timestamp}] [loadEvents] Events processed:`, evs.length, evs);
 
-                if (evs.length === 0) {
-                  console.log(`[${timestamp}] [loadEvents] No events found in response`);
+                  if (evs.length === 0) {
+                    console.log(`[${timestamp}] [loadEvents] No events found in response`);
+                    setEvents([]);
+                    resolve([]);
+                    return;
+                  }
+
+                  Promise.all(evs.map(e => getRegCount(e.Id).then(c => ({ ...e, regCount: c }))))
+                    .then(processed => {
+                      console.log(`[${timestamp}] [loadEvents] Events with reg counts:`, processed.length);
+                      setEvents([...processed]);
+                      resolve(processed);
+                    })
+                    .catch(err => {
+                      console.warn(`[${timestamp}] [loadEvents] Error processing reg counts:`, err);
+                      setEvents([...evs.map(e => ({ ...e, regCount: 0 }))]);
+                      resolve(evs);
+                    });
+                } catch (err) {
+                  console.error(`[${timestamp}] [loadEvents] Error parsing events:`, err);
+                  handleError("Parse Events", err, "Failed to parse events data. Check list columns or response format.");
                   setEvents([]);
-                  setLoading(false);
-                  $("#loading").hide();
-                  renderCards();
-                  return;
+                  resolve([]);
                 }
-
-                Promise.all(evs.map(e => getRegCount(e.Id).then(c => ({ ...e, regCount: c }))))
-                  .then(processed => {
-                    console.log(`[${timestamp}] [loadEvents] Events with reg counts:`, processed.length);
-                    setEvents([...processed]); // Ensure new array to trigger state update
-                    setLoading(false);
-                    $("#loading").hide();
-                    renderCards();
-                  })
-                  .catch(err => {
-                    console.warn(`[${timestamp}] [loadEvents] Error processing reg counts:`, err);
-                    setEvents([...evs.map(e => ({ ...e, regCount: 0 }))]);
-                    setLoading(false);
-                    $("#loading").hide();
-                    renderCards();
-                  });
-              } catch (err) {
-                handleError("Parse Events", err, "Failed to parse events data. Check list columns or response format.");
+              },
+              error: xhr => {
+                console.error(`[${timestamp}] [loadEvents] Failed to load events:`, {
+                  status: xhr.status,
+                  statusText: xhr.statusText,
+                  response: xhr.responseJSON || xhr.responseText
+                });
+                let msg = "Failed to load events. Please check list settings or permissions.";
+                if (xhr.status === 404) msg = "List 'Events' not found. Verify list name.";
+                if (xhr.status === 403) msg = "Access denied to Events list. Contact your administrator.";
+                if (xhr.status === 400) msg = "Invalid query. Check column names in Events list.";
+                handleError("Load Events", xhr, msg);
                 setEvents([]);
-                setLoading(false);
-                $("#loading").hide();
-                renderCards();
+                resolve([]);
               }
-            },
-            error: xhr => {
-              console.error(`[${timestamp}] [loadEvents] Failed to load events:`, {
-                status: xhr.status,
-                statusText: xhr.statusText,
-                response: xhr.responseJSON || xhr.responseText
-              });
-              let msg = "Failed to load events. Please check list settings or permissions.";
-              if (xhr.status === 404) msg = "List 'Events' not found. Verify list name.";
-              if (xhr.status === 403) msg = "Access denied to Events list. Contact your administrator.";
-              if (xhr.status === 400) msg = "Invalid query. Check column names in Events list.";
-              handleError("Load Events", xhr, msg);
-              setEvents([]);
-              setLoading(false);
-              $("#loading").hide();
-              renderCards();
-            }
+            });
           });
         };
 
@@ -321,8 +333,6 @@
               console.error(`[${timestamp}] [loadMyRegs] Invalid userEmail:`, userEmailRef.current);
               handleError("Load My Registrations", new Error("Invalid user email"), "Cannot load registrations due to invalid user email.");
               setMyRegs([]);
-              setLoading(false);
-              renderCards();
               resolve([]);
               return;
             }
@@ -355,16 +365,12 @@
                     };
                   });
                   console.log(`[${timestamp}] [loadMyRegs] My registrations loaded:`, registrations.length, registrations);
-                  setMyRegs([...registrations]); // Ensure new array
-                  setLoading(false);
-                  renderCards();
+                  setMyRegs([...registrations]);
                   resolve(registrations);
                 } catch (e) {
                   console.error(`[${timestamp}] [loadMyRegs] Error parsing registrations:`, e);
                   handleError("Parse Registrations", e, "Failed to parse user registrations.");
                   setMyRegs([]);
-                  setLoading(false);
-                  renderCards();
                   resolve([]);
                 }
               },
@@ -381,8 +387,6 @@
                 if (xhr.status === 400) userMsg = "Invalid query. Check UserEmail or EventLookupId configuration.";
                 handleError("Load My Registrations", xhr, userMsg);
                 setMyRegs([]);
-                setLoading(false);
-                renderCards();
                 resolve([]);
               }
             });
@@ -392,7 +396,11 @@
         const refreshMyRegs = () => {
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [refreshMyRegs] Manually refreshing registrations...`);
-          loadMyRegs();
+          setLoading(true);
+          loadMyRegs().then(() => {
+            setLoading(false);
+            renderCards();
+          });
         };
 
         const getRegCount = (id) => {
@@ -454,9 +462,14 @@
           console.log(`[${timestamp}] [register] Attempting registration for Event ID:`, id);
 
           try {
+            setLoading(true);
+            $("#loading").show();
+
             if (!Number.isInteger(id) || id <= 0) {
               console.error(`[${timestamp}] [register] Invalid Event ID:`, id);
               alert("Invalid event ID.");
+              setLoading(false);
+              renderCards();
               return;
             }
             console.log(`[${timestamp}] [register] Event ID validated:`, id);
@@ -465,11 +478,15 @@
             if (!ev) {
               console.error(`[${timestamp}] [register] Event not found for ID:`, id);
               alert("Event not found.");
+              setLoading(false);
+              renderCards();
               return;
             }
             if (!ev.AllowRegistration) {
               console.warn(`[${timestamp}] [register] Registration closed for Event ID:`, id);
               alert("Registration closed.");
+              setLoading(false);
+              renderCards();
               return;
             }
             console.log(`[${timestamp}] [register] Event validated:`, ev.Title);
@@ -477,23 +494,25 @@
             if (!userEmailRef.current || userEmailRef.current === 'unknown') {
               console.error(`[${timestamp}] [register] Invalid userEmail:`, userEmailRef.current);
               alert("Invalid user email. Cannot proceed with registration.");
-              return;
-            }
-
-            console.log(`[${timestamp}] [register] Before loadMyRegs...`);
-            let myRegs = [];
-            try {
-              myRegs = await loadMyRegs();
-              console.log(`[${timestamp}] [register] After loadMyRegs, registrations:`, myRegs.length, myRegs);
-            } catch (err) {
-              console.error(`[${timestamp}] [register] loadMyRegs failed:`, err);
-              alert("Failed to load registrations. Please try again.");
               setLoading(false);
               renderCards();
               return;
             }
 
-            const localReg = myRegs.find(r => r.EventLookupId === ev.Id);
+            console.log(`[${timestamp}] [register] Before loadMyRegs...`);
+            let myRegsLocal = [];
+            try {
+              myRegsLocal = await loadMyRegs();
+              console.log(`[${timestamp}] [register] After loadMyRegs, registrations:`, myRegsLocal.length, myRegsLocal);
+            } catch (err) {
+              console.error(`[${timestamp}] [register] loadMyRegs failed:`, err);
+              handleError("Load My Registrations in Register", err, "Failed to load registrations. Please try again.");
+              setLoading(false);
+              renderCards();
+              return;
+            }
+
+            const localReg = myRegsLocal.find(r => r.EventLookupId === ev.Id);
             if (localReg) {
               console.log(`[${timestamp}] [register] Found in local state for Event ID ${id}:`, localReg);
               alert("You are already " + (localReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${localReg.WaitlistPosition})`));
@@ -707,6 +726,9 @@
           $("#unregModal").modal("hide");
 
           try {
+            setLoading(true);
+            $("#loading").show();
+
             console.log(`[${timestamp}] [unregister] Refreshing digest before unregister...`);
             digestRef.current = await refreshDigest(siteRef.current);
             if (!digestRef.current) {
@@ -747,7 +769,6 @@
             console.log(`[${timestamp}] [unregister] Registration deleted successfully for Event ID:`, unregId);
             await loadEvents();
             await loadMyRegs();
-            console.log(`[${timestamp}] [unregister] UI updated after deletion`);
             alert("Registration cancelled successfully.");
             setLoading(false);
             renderCards();
@@ -767,15 +788,18 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [renderCards] Rendering event cards...`, { events: events.length, search, loading });
 
-          if (loading) {
-            console.log(`[${timestamp}] [renderCards] Still loading, skipping render`);
-            return;
-          }
-
           const root = document.getElementById('root');
           if (!root) {
             console.error(`[${timestamp}] [renderCards] #root element not found`);
             alert("Error: #root element not found in DOM. Check EventsDashboard.aspx.");
+            return;
+          }
+
+          $("#loading").hide();
+
+          if (loading) {
+            console.log(`[${timestamp}] [renderCards] Still loading, rendering loading state`);
+            ReactDOM.render(React.createElement("div", { className: "alert alert-info" }, "Loading events..."), root);
             return;
           }
 
