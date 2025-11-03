@@ -211,7 +211,7 @@
               });
           });
 
-          // Attach #confirmUnreg event handler with delegation
+          // Handle #confirmUnreg click
           const handleConfirmUnreg = () => {
             const localTimestamp = new Date().toISOString();
             console.log(`[${localTimestamp}] [confirmUnreg] Unregister button clicked, unregId:`, unregId);
@@ -228,16 +228,36 @@
             }
           };
 
-          // Use event delegation to handle dynamic modal content
+          // Event delegation for #confirmUnreg
           $(document).off('click', '#confirmUnreg').on('click', '#confirmUnreg', (e) => {
-            e.preventDefault(); // Prevent default modal behavior
-            console.log(`[${new Date().toISOString()}] [confirmUnreg] Event triggered for #confirmUnreg`);
+            e.preventDefault();
+            e.stopPropagation();
+            console.log(`[${new Date().toISOString()}] [confirmUnreg] Event triggered for #confirmUnreg, button exists:`, !!$("#confirmUnreg").length);
             handleConfirmUnreg();
+          });
+
+          // Fallback: Direct binding after modal is shown
+          $("#unregModal").off('shown.bs.modal').on('shown.bs.modal', () => {
+            const modalTimestamp = new Date().toISOString();
+            console.log(`[${modalTimestamp}] [unregModal shown] Modal visible, checking #confirmUnreg:`, !!$("#confirmUnreg").length);
+            if ($("#confirmUnreg").length) {
+              $("#confirmUnreg").off('click').on('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log(`[${new Date().toISOString()}] [confirmUnreg] Direct click triggered for #confirmUnreg`);
+                handleConfirmUnreg();
+              });
+            } else {
+              console.error(`[${modalTimestamp}] [unregModal shown] #confirmUnreg not found in modal`);
+              alert("Error: Confirm button not found in modal. Check EventsDashboard.aspx.");
+            }
           });
 
           return () => {
             $('#searchBox').off('input', handleSearch);
             $(document).off('click', '#confirmUnreg');
+            $("#unregModal").off('shown.bs.modal');
+            $("#confirmUnreg").off('click');
             clearTimeout(timeout);
           };
         }, [unregId]);
@@ -299,7 +319,6 @@
           console.log(`[${timestamp}] [loadEvents] STARTED`);
 
           return new Promise((resolve, reject) => {
-           _MATH_4
             const q = "?$select=Id,Title,StartDate,EndDate,Location,Instructor,MaxSeats,AllowRegistration,IsOver,Attachments";
             const url = siteRef.current + "/_api/web/lists/getbytitle('Events')/items" + q;
 
@@ -861,7 +880,7 @@
             await loadMyRegs();
             alert("Registration cancelled successfully.");
             setLoading(false);
-            setUnregId(null); // Reset unregId after successful unregister
+            setUnregId(null);
           } catch (xhr) {
             console.error(`[${timestamp}] [unregister] Error unregistering for Event ID ${eventId}:`, {
               status: xhr.status,
@@ -874,7 +893,7 @@
             if (xhr.status === 400) userMsg = "Invalid request. Please check list settings.";
             handleError("Unregister", xhr, userMsg);
             setLoading(false);
-            setUnregId(null); // Reset unregId on error
+            setUnregId(null);
           }
         };
 
