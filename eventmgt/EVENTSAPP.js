@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED LOADING STATE AND EVENT CARDS ===
+// === SP 2016 ON-PREM – FIXED EVENT CARDS RENDERING ===
 (function () {
   'use strict';
 
@@ -14,7 +14,9 @@
     });
     const root = document.getElementById('root');
     if (root) {
+      root.innerHTML = ''; // Clear root to prevent stale content
       ReactDOM.render(React.createElement("div", { className: "alert alert-danger" }, `${userMsg}\n\nCheck F12 Console for details.`), root);
+      console.log(`[${timestamp}] [handleError] Error rendered to #root`);
     } else {
       console.error(`[${timestamp}] [handleError] #root element not found`);
       alert(`${userMsg}\nError: #root element not found in DOM.`);
@@ -156,11 +158,18 @@
         // Event Cards Component
         const EventCards = ({ events, myRegs, search, register, showUnreg, refreshMyRegs }) => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [EventCards] Rendering ${events.length} events, search:`, search, "events:", events);
+          console.log(`[${timestamp}] [EventCards] START Rendering ${events.length} events`, { search, events });
 
           // Validate events
           const validEvents = events.filter(e => {
-            const isValid = e && Number.isInteger(e.Id) && e.Title && e.StartTime && e.EndTime;
+            const isValid = e &&
+              Number.isInteger(e.Id) &&
+              typeof e.Title === 'string' &&
+              e.Title &&
+              e.StartTime &&
+              e.EndTime &&
+              !isNaN(new Date(e.StartTime).getTime()) &&
+              !isNaN(new Date(e.EndTime).getTime());
             if (!isValid) {
               console.warn(`[${timestamp}] [EventCards] Invalid event data:`, e);
             }
@@ -174,7 +183,8 @@
           );
           console.log(`[${timestamp}] [EventCards] Filtered events:`, filtered.length, filtered);
 
-          const cards = filtered.length ? filtered.map(ev => {
+          const cards = filtered.length ? filtered.map((ev, index) => {
+            console.log(`[${timestamp}] [EventCards] Processing event ${index + 1}/${filtered.length}:`, ev);
             const myReg = myRegs.find(r => r.EventLookupId === ev.Id);
             const isFull = ev.MaxSeats && ev.regCount >= ev.MaxSeats;
             const endDate = new Date(ev.EndTime);
@@ -210,21 +220,33 @@
               );
             }
 
-            return React.createElement("div", { key: ev.Id, className: "col-md-6 mb-3" },
-              React.createElement("div", { className: panelCls },
-                React.createElement("div", { className: "panel-heading" }, ev.Title || "Untitled Event"),
-                React.createElement("div", { className: "panel-body" },
-                  React.createElement("p", null, "Time: ", ev.StartTime ? new Date(ev.StartTime).toLocaleString() : "TBD", " - ", ev.EndTime ? new Date(ev.EndTime).toLocaleString() : "TBD"),
-                  React.createElement("p", null, "Room: ", ev.Room || "TBD"),
-                  React.createElement("p", null, "Instructor: ", ev.Instructor || "TBD"),
-                  React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
-                ),
-                React.createElement("div", { className: "panel-footer text-right" }, btn)
-              )
-            );
-          }) : [React.createElement("div", { key: "no", className: "alert alert-info text-center" }, "No valid events found. Please check Events list or permissions.")];
+            try {
+              return React.createElement("div", { key: ev.Id, className: "col-md-6 mb-3" },
+                React.createElement("div", { className: panelCls },
+                  React.createElement("div", { className: "panel-heading" }, ev.Title || "Untitled Event"),
+                  React.createElement("div", { className: "panel-body" },
+                    React.createElement("p", null, "Time: ", ev.StartTime ? new Date(ev.StartTime).toLocaleString() : "TBD", " - ", ev.EndTime ? new Date(ev.EndTime).toLocaleString() : "TBD"),
+                    React.createElement("p", null, "Room: ", ev.Room || "TBD"),
+                    React.createElement("p", null, "Instructor: ", ev.Instructor || "TBD"),
+                    React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
+                  ),
+                  React.createElement("div", { className: "panel-footer text-right" }, btn)
+                )
+              );
+            } catch (e) {
+              console.error(`[${timestamp}] [EventCards] Failed to create card for Event ID ${ev.Id}:`, e);
+              return null;
+            }
+          }).filter(card => card !== null) : [React.createElement("div", { key: "no", className: "alert alert-info text-center" }, "No valid events found. Please check Events list or permissions.")];
 
-          return React.createElement("div", { className: "row" }, cards);
+          console.log(`[${timestamp}] [EventCards] Generated ${cards.length} cards`);
+
+          try {
+            return React.createElement("div", { className: "row event-row" }, cards);
+          } catch (e) {
+            console.error(`[${timestamp}] [EventCards] Failed to render cards:`, e);
+            return React.createElement("div", { className: "alert alert-danger" }, "Failed to render event cards. Check console.");
+          }
         };
 
         // Modal Component
@@ -283,15 +305,16 @@
           ] : null;
         };
 
-        // Dedicated useEffect for loading state
+        // Dedicated useEffect for forcing render
         React.useEffect(() => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [useEffect] Loading state changed:`, { loading, events: events.length, myRegs: myRegs.length });
-          // Force render after state update
-          setTimeout(() => {
+          console.log(`[${timestamp}] [useEffect] State changed:`, { loading, events: events.length, myRegs: myRegs.length });
+          const timer = setTimeout(() => {
+            console.log(`[${timestamp}] [useEffect] Forcing render after 200ms delay`);
             renderApp();
-          }, 100); // Increased delay to ensure state propagation
-        }, [loading]);
+          }, 200);
+          return () => clearTimeout(timer);
+        }, [loading, events, myRegs]);
 
         // useEffect for componentDidMount
         React.useEffect(() => {
@@ -416,19 +439,23 @@
               success: d => {
                 console.log(`[${timestamp}] [loadEvents] Raw response:`, d);
                 try {
-                  let evs = (d.d?.results || []).map(ev => {
-                    const startDate = ev.StartDate ? new Date(ev.StartDate) : new Date();
-                    const endDate = ev.EndDate ? new Date(ev.EndDate) : new Date();
-                    console.log(`[${timestamp}] [loadEvents] Processing event:`, ev.Id, ev.Title, {
+                  let evs = (d.d?.results || []).map((ev, index) => {
+                    const startDate = ev.StartDate ? new Date(ev.StartDate) : null;
+                    const endDate = ev.EndDate ? new Date(ev.EndDate) : null;
+                    console.log(`[${timestamp}] [loadEvents] Processing event ${index + 1}:`, ev.Id, ev.Title, {
                       StartDate: ev.StartDate,
                       EndDate: ev.EndDate,
                       AllowRegistration: ev.AllowRegistration,
-                      ParsedStart: startDate.toISOString(),
-                      ParsedEnd: endDate.toISOString()
+                      ParsedStart: startDate?.toISOString() || 'Invalid',
+                      ParsedEnd: endDate?.toISOString() || 'Invalid'
                     });
+                    if (!ev.Id || !ev.Title || !startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                      console.warn(`[${timestamp}] [loadEvents] Skipping invalid event:`, ev);
+                      return null;
+                    }
                     return {
                       Id: ev.Id,
-                      Title: ev.Title || "Untitled Event",
+                      Title: ev.Title,
                       StartTime: startDate.toISOString(),
                       EndTime: endDate.toISOString(),
                       Room: ev.Location || "TBD",
@@ -439,19 +466,19 @@
                       Attachments: ev.Attachments || false,
                       regCount: 0
                     };
-                  }).sort((a, b) => new Date(a.StartTime) - new Date(b.EndTime));
+                  }).filter(ev => ev !== null).sort((a, b) => new Date(a.StartTime) - new Date(b.EndTime));
 
                   console.log(`[${timestamp}] [loadEvents] Events processed:`, evs.length, evs);
 
                   if (evs.length === 0) {
-                    console.log(`[${timestamp}] [loadEvents] No events found in response`);
+                    console.log(`[${timestamp}] [loadEvents] No valid events found in response`);
                     resolve([]);
                     return;
                   }
 
                   Promise.all(evs.map(e => getRegCount(e.Id).then(c => ({ ...e, regCount: c }))))
                     .then(processed => {
-                      console.log(`[${timestamp}] [loadEvents] Events with reg counts:`, processed.length);
+                      console.log(`[${timestamp}] [loadEvents] Events with reg counts:`, processed.length, processed);
                       resolve(processed);
                     })
                     .catch(err => {
@@ -974,7 +1001,7 @@
 
         const renderApp = () => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [renderApp] Rendering app, state:`, { loading, events: events.length, myRegs: myRegs.length, showModal, unregId });
+          console.log(`[${timestamp}] [renderApp] START Rendering app, state:`, { loading, events: events.length, myRegs: myRegs.length, showModal, unregId });
 
           const root = document.getElementById('root');
           if (!root) {
@@ -984,11 +1011,17 @@
             return;
           }
 
-          // Clear root to prevent DOM conflicts
+          // Clear root and validate
           root.innerHTML = '';
           console.log(`[${timestamp}] [renderApp] Root cleared, status:`, { exists: !!root, innerHTML: root.innerHTML });
 
+          // Force visibility
+          root.style.display = 'block';
+          root.style.visibility = 'visible';
+          console.log(`[${timestamp}] [renderApp] Root CSS:`, { display: root.style.display, visibility: root.style.visibility });
+
           $("#loading").hide();
+          console.log(`[${timestamp}] [renderApp] Loading element hidden`);
 
           try {
             if (loading) {
@@ -997,7 +1030,9 @@
                 React.createElement("div", { className: "alert alert-info text-center" }, "Loading events..."),
                 root
               );
-              console.log(`[${timestamp}] [renderApp] Loading state rendered`);
+              console.log(`[${timestamp}] [renderApp] Loading state rendered, DOM check:`, {
+                rootContent: root.innerHTML.substring(0, 100) + "..."
+              });
               return;
             }
 
@@ -1007,10 +1042,13 @@
                 React.createElement("div", { className: "alert alert-info text-center" }, "No events found. Please check Events list or permissions."),
                 root
               );
-              console.log(`[${timestamp}] [renderApp] No events state rendered`);
+              console.log(`[${timestamp}] [renderApp] No events state rendered, DOM check:`, {
+                rootContent: root.innerHTML.substring(0, 100) + "..."
+              });
               return;
             }
 
+            console.log(`[${timestamp}] [renderApp] Rendering EventCards with ${events.length} events`);
             ReactDOM.render(
               React.createElement(ErrorBoundary, null,
                 React.createElement("div", { className: "event-container" },
@@ -1028,15 +1066,19 @@
               root
             );
             console.log(`[${timestamp}] [renderApp] Rendered successfully, checking DOM:`, {
-              cards: !!document.querySelector(".row"),
+              rootContent: root.innerHTML.substring(0, 100) + "...",
+              eventContainer: !!document.querySelector(".event-container"),
+              cards: !!document.querySelector(".event-row"),
               panels: document.querySelectorAll(".panel").length,
               modal: !!document.querySelector(".modal"),
               backdrop: !!document.querySelector(".modal-backdrop")
             });
+
             // Force DOM repaint
             root.style.display = 'none';
             root.offsetHeight; // Trigger reflow
             root.style.display = 'block';
+            console.log(`[${timestamp}] [renderApp] Forced DOM repaint`);
           } catch (e) {
             console.error(`[${timestamp}] [renderApp] ReactDOM.render failed:`, e);
             handleError("Render App", e, "Failed to render event cards or modal. Check React version or DOM setup.");
@@ -1053,6 +1095,11 @@
         alert("Error: #root element not found in DOM. Check EventsDashboard.aspx.");
         return;
       }
+
+      // Ensure root is visible
+      root.style.display = 'block';
+      root.style.visibility = 'visible';
+      console.log(`[${timestamp}] [App Init] Root initialized, CSS:`, { display: root.style.display, visibility: root.style.visibility });
 
       const app = React.createElement(App);
       ReactDOM.render(app, root);
