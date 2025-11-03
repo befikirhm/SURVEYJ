@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED EVENT CARDS, MODAL VISIBILITY, AND SYNTAX ===
+// === SP 2016 ON-PREM – FIXED LOADING STATE AND EVENT CARDS ===
 (function () {
   'use strict';
 
@@ -153,6 +153,70 @@
           }
         };
 
+        // Event Cards Component
+        const EventCards = ({ events, myRegs, search, register, showUnreg, refreshMyRegs }) => {
+          const timestamp = new Date().toISOString();
+          console.log(`[${timestamp}] [EventCards] Rendering ${events.length} events, search:`, search);
+
+          const filtered = events.filter(e =>
+            (e.Title || "").toLowerCase().includes(search) ||
+            (e.Room || "").toLowerCase().includes(search)
+          );
+          console.log(`[${timestamp}] [EventCards] Filtered events:`, filtered.length);
+
+          const cards = filtered.length ? filtered.map(ev => {
+            const myReg = myRegs.find(r => r.EventLookupId === ev.Id);
+            const isFull = ev.MaxSeats && ev.regCount >= ev.MaxSeats;
+            const endDate = new Date(ev.EndTime);
+            const now = new Date();
+            const isPast = endDate.getTime() < now.getTime();
+            const canReg = ev.AllowRegistration && !isPast && !ev.IsOver;
+
+            console.log(`[${timestamp}] [EventCards] Event ID ${ev.Id}:`, {
+              title: ev.Title,
+              isFull,
+              isPast,
+              canReg,
+              registered: !!myReg,
+              status: myReg?.Status
+            });
+
+            const panelCls = isFull || isPast || ev.IsOver ? "panel panel-default card-full" + (isPast ? " card-past" : "") : "panel panel-primary";
+
+            let btn;
+            if (!canReg) {
+              btn = React.createElement("button", { className: "btn btn-default btn-sm disabled" }, isFull ? "Full" : "Closed");
+            } else if (myReg) {
+              const status = myReg.Status === 'Confirmed'
+                ? React.createElement("button", { className: "btn btn-success btn-sm disabled" }, "Registered")
+                : React.createElement("button", { className: "btn btn-warning btn-sm disabled" }, `Waitlist #${myReg.WaitlistPosition}`);
+              btn = React.createElement("div", null, status,
+                React.createElement("button", { className: "btn btn-danger btn-sm", onClick: () => showUnreg(ev.Id) }, "Cancel")
+              );
+            } else {
+              btn = React.createElement("div", null,
+                React.createElement("button", { className: "btn btn-success btn-sm", onClick: () => register(ev.Id) }, isFull ? "Join Waitlist" : "Register"),
+                React.createElement("button", { className: "btn btn-info btn-sm", onClick: () => refreshMyRegs() }, "Refresh")
+              );
+            }
+
+            return React.createElement("div", { key: ev.Id, className: "col-md-6 mb-3" },
+              React.createElement("div", { className: panelCls },
+                React.createElement("div", { className: "panel-heading" }, ev.Title || "Untitled Event"),
+                React.createElement("div", { className: "panel-body" },
+                  React.createElement("p", null, "Time: ", ev.StartTime ? new Date(ev.StartTime).toLocaleString() : "TBD", " - ", ev.EndTime ? new Date(ev.EndTime).toLocaleString() : "TBD"),
+                  React.createElement("p", null, "Room: ", ev.Room || "TBD"),
+                  React.createElement("p", null, "Instructor: ", ev.Instructor || "TBD"),
+                  React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
+                ),
+                React.createElement("div", { className: "panel-footer text-right" }, btn)
+              )
+            );
+          }) : [React.createElement("div", { key: "no", className: "alert alert-info text-center" }, "No events found. Please check Events list or permissions.")];
+
+          return React.createElement("div", { className: "row" }, cards);
+        };
+
         // Modal Component
         const UnregModal = () => {
           const timestamp = new Date().toISOString();
@@ -209,11 +273,11 @@
           ] : null;
         };
 
-        // useEffect for rendering cards
+        // useEffect for rendering
         React.useEffect(() => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [useEffect] Rendering cards, state:`, { loading, events: events.length, myRegs: myRegs.length, showModal, unregId });
-          renderCards();
+          console.log(`[${timestamp}] [useEffect] Rendering, state:`, { loading, events: events.length, myRegs: myRegs.length, showModal, unregId });
+          renderApp();
         }, [events, myRegs, search, loading, showModal, unregId]);
 
         // useEffect for componentDidMount
@@ -250,11 +314,12 @@
           checkAdmin(() => {
             console.log(`[${timestamp}] [useEffect] Admin check done. Loading events and registrations...`);
             Promise.all([loadEvents(), loadMyRegs()])
-              .then(() => {
-                console.log(`[${timestamp}] [useEffect] All data loaded, clearing timeout`);
+              .then(([loadedEvents, loadedRegs]) => {
+                console.log(`[${timestamp}] [useEffect] All data loaded, clearing timeout`, { events: loadedEvents.length, regs: loadedRegs.length });
                 clearTimeout(timeout);
+                setEvents([...loadedEvents]);
+                setMyRegs([...loadedRegs]);
                 setLoading(false);
-                setTimeout(() => renderCards(), 0); // Force render after data load
               })
               .catch(err => {
                 console.error(`[${timestamp}] [useEffect] Error loading data:`, err);
@@ -366,7 +431,6 @@
 
                   if (evs.length === 0) {
                     console.log(`[${timestamp}] [loadEvents] No events found in response`);
-                    setEvents([]);
                     resolve([]);
                     return;
                   }
@@ -374,18 +438,15 @@
                   Promise.all(evs.map(e => getRegCount(e.Id).then(c => ({ ...e, regCount: c }))))
                     .then(processed => {
                       console.log(`[${timestamp}] [loadEvents] Events with reg counts:`, processed.length);
-                      setEvents([...processed]);
                       resolve(processed);
                     })
                     .catch(err => {
                       console.warn(`[${timestamp}] [loadEvents] Error processing reg counts:`, err);
-                      setEvents([...evs.map(e => ({ ...e, regCount: 0 }))]);
-                      resolve(evs);
+                      resolve(evs.map(e => ({ ...e, regCount: 0 })));
                     });
                 } catch (err) {
                   console.error(`[${timestamp}] [loadEvents] Error parsing events:`, err);
                   handleError("Parse Events", err, "Failed to parse events data. Check list columns or response format.");
-                  setEvents([]);
                   resolve([]);
                 }
               },
@@ -400,7 +461,6 @@
                 if (xhr.status === 403) msg = "Access denied to Events list. Contact your administrator.";
                 if (xhr.status === 400) msg = "Invalid query. Check column names in Events list.";
                 handleError("Load Events", xhr, msg);
-                setEvents([]);
                 resolve([]);
               }
             });
@@ -415,7 +475,6 @@
             if (!userEmailRef.current || userEmailRef.current === 'unknown') {
               console.error(`[${timestamp}] [loadMyRegs] Invalid userEmail:`, userEmailRef.current);
               handleError("Load My Registrations", new Error("Invalid user email"), "Cannot load registrations due to invalid user email.");
-              setMyRegs([]);
               resolve([]);
               return;
             }
@@ -448,12 +507,10 @@
                     };
                   });
                   console.log(`[${timestamp}] [loadMyRegs] My registrations loaded:`, registrations.length, registrations);
-                  setMyRegs([...registrations]);
                   resolve(registrations);
                 } catch (e) {
                   console.error(`[${timestamp}] [loadMyRegs] Error parsing registrations:`, e);
                   handleError("Parse Registrations", e, "Failed to parse user registrations.");
-                  setMyRegs([]);
                   resolve([]);
                 }
               },
@@ -469,7 +526,6 @@
                 if (xhr.status === 404) userMsg = "Registrations list not found. Verify list name.";
                 if (xhr.status === 400) userMsg = "Invalid query. Check UserEmail or EventLookupId configuration.";
                 handleError("Load My Registrations", xhr, userMsg);
-                setMyRegs([]);
                 resolve([]);
               }
             });
@@ -480,7 +536,8 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [refreshMyRegs] Manually refreshing registrations...`);
           setLoading(true);
-          loadMyRegs().then(() => {
+          loadMyRegs().then(regs => {
+            setMyRegs([...regs]);
             setLoading(false);
           }).catch(err => {
             console.error(`[${timestamp}] [refreshMyRegs] Error refreshing registrations:`, err);
@@ -599,27 +656,6 @@
               return;
             }
             console.log(`[${timestamp}] [register] User email validated:`, userEmailRef.current);
-
-            console.log(`[${timestamp}] [register] Before loadMyRegs...`);
-            let myRegsLocal = [];
-            try {
-              myRegsLocal = await loadMyRegs();
-              console.log(`[${timestamp}] [register] After loadMyRegs, registrations:`, myRegsLocal.length, myRegsLocal);
-            } catch (err) {
-              console.error(`[${timestamp}] [register] loadMyRegs failed:`, err);
-              handleError("Load My Registrations in Register", err, "Failed to load registrations. Please try again.");
-              setLoading(false);
-              return;
-            }
-
-            const localReg = myRegsLocal.find(r => r.EventLookupId === ev.Id);
-            if (localReg) {
-              console.log(`[${timestamp}] [register] Found in local state for Event ID ${id}:`, localReg);
-              alert("You are already " + (localReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${localReg.WaitlistPosition})`));
-              setLoading(false);
-              return;
-            }
-            console.log(`[${timestamp}] [register] No local registration found`);
 
             console.log(`[${timestamp}] [register] Double-checking via REST...`);
             const existingReg = await checkExistingRegistration(id);
@@ -922,13 +958,13 @@
           }
         };
 
-        const renderCards = () => {
+        const renderApp = () => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [renderCards] Rendering event cards, state:`, { loading, events: events.length, myRegs: myRegs.length, showModal, unregId });
+          console.log(`[${timestamp}] [renderApp] Rendering app, state:`, { loading, events: events.length, myRegs: myRegs.length, showModal, unregId });
 
           const root = document.getElementById('root');
           if (!root) {
-            console.error(`[${timestamp}] [renderCards] #root element not found`);
+            console.error(`[${timestamp}] [renderApp] #root element not found`);
             alert("Error: #root element not found in DOM. Check EventsDashboard.aspx.");
             setLoading(false);
             return;
@@ -937,101 +973,46 @@
           $("#loading").hide();
 
           if (loading) {
-            console.log(`[${timestamp}] [renderCards] Still loading, rendering loading state`);
+            console.log(`[${timestamp}] [renderApp] Still loading, rendering loading state`);
             try {
               ReactDOM.render(
                 React.createElement("div", { className: "alert alert-info text-center" }, "Loading events..."),
                 root
               );
+              console.log(`[${timestamp}] [renderApp] Loading state rendered`);
             } catch (e) {
-              console.error(`[${timestamp}] [renderCards] ReactDOM.render failed for loading state:`, e);
+              console.error(`[${timestamp}] [renderApp] ReactDOM.render failed for loading state:`, e);
               handleError("Render Loading State", e, "Failed to render loading state.");
               setLoading(false);
             }
             return;
           }
 
-          const filtered = events.filter(e =>
-            (e.Title || "").toLowerCase().includes(search) ||
-            (e.Room || "").toLowerCase().includes(search)
-          );
-          console.log(`[${timestamp}] [renderCards] Filtered events:`, filtered.length, filtered);
-
-          const cards = filtered.length ? filtered.map(ev => {
-            const myReg = myRegs.find(r => r.EventLookupId === ev.Id);
-            const isFull = ev.MaxSeats && ev.regCount >= ev.MaxSeats;
-            const endDate = new Date(ev.EndTime);
-            const now = new Date();
-            const isPast = endDate.getTime() < now.getTime();
-            const canReg = ev.AllowRegistration && !isPast && !ev.IsOver;
-
-            console.log(`[${timestamp}] [renderCards] Event ID ${ev.Id}:`, {
-              title: ev.Title,
-              isFull,
-              isPast,
-              canReg,
-              registered: !!myReg,
-              status: myReg?.Status,
-              startTime: ev.StartTime,
-              endTime: ev.EndTime,
-              parsedEnd: endDate.toISOString(),
-              now: now.toISOString(),
-              allowRegistration: ev.AllowRegistration,
-              isOver: ev.IsOver
-            });
-
-            const panelCls = isFull || isPast || ev.IsOver ? "panel panel-default card-full" + (isPast ? " card-past" : "") : "panel panel-primary";
-
-            let btn;
-            if (!canReg) {
-              btn = React.createElement("button", { className: "btn btn-default btn-sm disabled" }, isFull ? "Full" : "Closed");
-            } else if (myReg) {
-              const status = myReg.Status === 'Confirmed'
-                ? React.createElement("button", { className: "btn btn-success btn-sm disabled" }, "Registered")
-                : React.createElement("button", { className: "btn btn-warning btn-sm disabled" }, `Waitlist #${myReg.WaitlistPosition}`);
-              btn = React.createElement("div", null, status,
-                React.createElement("button", { className: "btn btn-danger btn-sm", onClick: () => showUnreg(ev.Id) }, "Cancel")
-              );
-            } else {
-              btn = React.createElement("div", null,
-                React.createElement("button", { className: "btn btn-success btn-sm", onClick: () => register(ev.Id) }, isFull ? "Join Waitlist" : "Register"),
-                React.createElement("button", { className: "btn btn-info btn-sm", onClick: () => refreshMyRegs() }, "Refresh")
-              );
-            }
-
-            return React.createElement("div", { key: ev.Id, className: "col-md-6 mb-3" },
-              React.createElement("div", { className: panelCls },
-                React.createElement("div", { className: "panel-heading" }, ev.Title || "Untitled Event"),
-                React.createElement("div", { className: "panel-body" },
-                  React.createElement("p", null, "Time: ", ev.StartTime ? new Date(ev.StartTime).toLocaleString() : "TBD", " - ", ev.EndTime ? new Date(ev.EndTime).toLocaleString() : "TBD"),
-                  React.createElement("p", null, "Room: ", ev.Room || "TBD"),
-                  React.createElement("p", null, "Instructor: ", ev.Instructor || "TBD"),
-                  React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
-                ),
-                React.createElement("div", { className: "panel-footer text-right" }, btn)
-              )
-            );
-          }) : [React.createElement("div", { key: "no", className: "alert alert-info text-center" }, "No events found. Please check Events list or permissions.")];
-
-          console.log(`[${timestamp}] [renderCards] Rendering ${cards.length} cards, modal visible:`, showModal);
           try {
             ReactDOM.render(
               React.createElement(ErrorBoundary, null,
                 React.createElement("div", null,
-                  React.createElement("div", { className: "row" }, cards),
+                  React.createElement(EventCards, {
+                    events,
+                    myRegs,
+                    search,
+                    register,
+                    showUnreg,
+                    refreshMyRegs
+                  }),
                   React.createElement(UnregModal)
                 )
               ),
               root
             );
-            console.log(`[${timestamp}] [renderCards] Rendered successfully, checking DOM:`, {
+            console.log(`[${timestamp}] [renderApp] Rendered successfully, checking DOM:`, {
               cards: !!document.querySelector(".row"),
               modal: !!document.querySelector(".modal"),
               backdrop: !!document.querySelector(".modal-backdrop")
             });
           } catch (e) {
-            console.error(`[${timestamp}] [renderCards] ReactDOM.render failed:`, e);
-            handleError("Render Cards", e, "Failed to render event cards or modal. Check React version or DOM setup.");
+            console.error(`[${timestamp}] [renderApp] ReactDOM.render failed:`, e);
+            handleError("Render App", e, "Failed to render event cards or modal. Check React version or DOM setup.");
             setLoading(false);
           }
         };
