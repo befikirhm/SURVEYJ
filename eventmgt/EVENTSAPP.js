@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED EVENT CARDS RENDERING FOR REACT 16.8.6 ===
+// === SP 2016 ON-PREM – UPGRADED TO REACT 17 ===
 (function () {
   'use strict';
 
@@ -16,10 +16,9 @@
     if (root) {
       root.innerHTML = '';
       try {
-        ReactDOM.render(
-          React.createElement("div", { className: "alert alert-danger" }, `${userMsg}\n\nCheck F12 Console for details.`),
-          root
-        );
+        const errorElement = React.createElement("div", { className: "alert alert-danger" }, `${userMsg}\n\nCheck F12 Console for details.`);
+        const reactRoot = ReactDOM.createRoot(root);
+        reactRoot.render(errorElement);
         console.log(`[${timestamp}] [handleError] Error rendered to #root`);
       } catch (e) {
         console.error(`[${timestamp}] [handleError] Failed to render error:`, e);
@@ -121,7 +120,7 @@
     console.log(`[${timestamp}] [App Init] React version:`, React.version);
 
     let appInstance = null;
-    let reactRoot = null; // For React 17 createRoot
+    let reactRoot = null;
 
     try {
       const ctx = await getContext();
@@ -238,7 +237,7 @@
                     React.createElement("p", null, "Time: ", ev.StartTime ? new Date(ev.StartTime).toLocaleString() : "TBD", " - ", ev.EndTime ? new Date(ev.EndTime).toLocaleString() : "TBD"),
                     React.createElement("p", null, "Room: ", ev.Room || "TBD"),
                     React.createElement("p", null, "Instructor: ", ev.Instructor || "TBD"),
-                    React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.Max席 || "Unlimited")
+                    React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
                   ),
                   React.createElement("div", { className: "panel-footer text-right" }, btn)
                 )
@@ -427,12 +426,8 @@
               React.createElement("a", { href: "AdminDashboard.aspx", className: "btn btn-warning btn-block mb-2" }, "Admin Dashboard"),
               React.createElement("a", { href: "Survey.aspx", className: "btn btn-info btn-block" }, "Design Survey")
             );
-            if (ReactDOM.createRoot) {
-              const root = ReactDOM.createRoot(adminRoot);
-              root.render(links);
-            } else {
-              ReactDOM.render(links, adminRoot);
-            }
+            const reactAdminRoot = ReactDOM.createRoot(adminRoot);
+            reactAdminRoot.render(links);
             console.log(`[${timestamp}] [renderAdminLinks] Admin links rendered`);
           } catch (e) {
             handleError("Render Admin Links", e, "Failed to render admin links.");
@@ -606,7 +601,6 @@
           console.log(`[${timestamp}] [getRegCount] Getting registration count for Event ID:`, id);
 
           return new Promise(r => {
-ожалуй
             $.ajax({
               url: siteRef.current + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and Status eq 'Confirmed'&$select=Id",
               headers: { Accept: "application/json; odata=verbose" },
@@ -1045,12 +1039,8 @@
             if (loading) {
               console.log(`[${timestamp}] [renderApp] Still loading, rendering loading state`);
               const loadingElement = React.createElement("div", { className: "alert alert-info text-center" }, "Loading events...");
-              if (ReactDOM.createRoot) {
-                reactRoot = reactRoot || ReactDOM.createRoot(root);
-                reactRoot.render(loadingElement);
-              } else {
-                ReactDOM.render(loadingElement, root);
-              }
+              reactRoot = reactRoot || ReactDOM.createRoot(root);
+              reactRoot.render(loadingElement);
               console.log(`[${timestamp}] [renderApp] Loading state rendered, DOM check:`, {
                 rootContent: root.innerHTML.substring(0, 100) + "..."
               });
@@ -1060,12 +1050,8 @@
             if (!events.length) {
               console.warn(`[${timestamp}] [renderApp] No events to render`, events);
               const noEventsElement = React.createElement("div", { className: "alert alert-info text-center" }, "No events found. Please check Events list or permissions.");
-              if (ReactDOM.createRoot) {
-                reactRoot = reactRoot || ReactDOM.createRoot(root);
-                reactRoot.render(noEventsElement);
-              } else {
-                ReactDOM.render(noEventsElement, root);
-              }
+              reactRoot = reactRoot || ReactDOM.createRoot(root);
+              reactRoot.render(noEventsElement);
               console.log(`[${timestamp}] [renderApp] No events state rendered, DOM check:`, {
                 rootContent: root.innerHTML.substring(0, 100) + "..."
               });
@@ -1086,12 +1072,8 @@
                 React.createElement(UnregModal)
               )
             );
-            if (ReactDOM.createRoot) {
-              reactRoot = reactRoot || ReactDOM.createRoot(root);
-              reactRoot.render(appElement);
-            } else {
-              ReactDOM.render(appElement, root);
-            }
+            reactRoot = reactRoot || ReactDOM.createRoot(root);
+            reactRoot.render(appElement);
             console.log(`[${timestamp}] [renderApp] Rendered successfully, checking DOM:`, {
               rootContent: root.innerHTML.substring(0, 100) + "...",
               eventContainer: !!document.querySelector(".event-container"),
@@ -1130,16 +1112,11 @@
         visibility: root.style.visibility
       });
 
-      const app = React.createElement(App);
       try {
-        if (ReactDOM.createRoot) {
-          reactRoot = ReactDOM.createRoot(root);
-          reactRoot.render(app);
-        } else {
-          ReactDOM.render(app, root);
-        }
+        reactRoot = ReactDOM.createRoot(root);
+        reactRoot.render(React.createElement(App));
         $("#loading").show();
-        console.log(`[${timestamp}] [App Init] App rendered, loading shown`);
+        console.log(`[${timestamp}] [App Init] App rendered with createRoot, loading shown`);
       } catch (e) {
         console.error(`[${timestamp}] [App Init] Failed to render app:`, e);
         handleError("App Init", e, "Failed to initialize app. Check React CDN or console.");
