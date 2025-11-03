@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED CANREG FALSE AND REGISTRATION ===
+// === SP 2016 ON-PREM – FIXED CONSOLE ERROR, LOADING, AND CANREG ===
 (function () {
   'use strict';
 
@@ -164,6 +164,7 @@
           if (!root) {
             console.error(`[${timestamp}] [useEffect] #root element not found in DOM`);
             alert("Error: #root element not found in DOM. Check EventsDashboard.aspx.");
+            setLoading(false);
             return;
           }
 
@@ -323,12 +324,13 @@
                   console.error(`[${timestamp}] [loadEvents] Error parsing events:`, err);
                   handleError("Parse Events", err, "Failed to parse events data. Check list columns or response format.");
                   setEvents([]);
+                  setLoading(false); // Ensure loading stops
                   resolve([]);
                 }
               },
               error: xhr => {
                 console.error(`[${timestamp}] [loadEvents] Failed to load events:`, {
-                  status: xhrysical
+                  status: xhr.status,
                   statusText: xhr.statusText,
                   response: xhr.responseJSON || xhr.responseText
                 });
@@ -338,6 +340,7 @@
                 if (xhr.status === 400) msg = "Invalid query. Check column names in Events list.";
                 handleError("Load Events", xhr, msg);
                 setEvents([]);
+                setLoading(false); // Ensure loading stops
                 resolve([]);
               }
             });
@@ -353,6 +356,7 @@
               console.error(`[${timestamp}] [loadMyRegs] Invalid userEmail:`, userEmailRef.current);
               handleError("Load My Registrations", new Error("Invalid user email"), "Cannot load registrations due to invalid user email.");
               setMyRegs([]);
+              setLoading(false); // Ensure loading stops
               resolve([]);
               return;
             }
@@ -391,6 +395,7 @@
                   console.error(`[${timestamp}] [loadMyRegs] Error parsing registrations:`, e);
                   handleError("Parse Registrations", e, "Failed to parse user registrations.");
                   setMyRegs([]);
+                  setLoading(false); // Ensure loading stops
                   resolve([]);
                 }
               },
@@ -407,6 +412,7 @@
                 if (xhr.status === 400) userMsg = "Invalid query. Check UserEmail or EventLookupId configuration.";
                 handleError("Load My Registrations", xhr, userMsg);
                 setMyRegs([]);
+                setLoading(false); // Ensure loading stops
                 resolve([]);
               }
             });
@@ -418,6 +424,9 @@
           console.log(`[${timestamp}] [refreshMyRegs] Manually refreshing registrations...`);
           setLoading(true);
           loadMyRegs().then(() => {
+            setLoading(false);
+          }).catch(err => {
+            console.error(`[${timestamp}] [refreshMyRegs] Error refreshing registrations:`, err);
             setLoading(false);
           });
         };
@@ -815,6 +824,7 @@
           if (!root) {
             console.error(`[${timestamp}] [renderCards] #root element not found`);
             alert("Error: #root element not found in DOM. Check EventsDashboard.aspx.");
+            setLoading(false);
             return;
           }
 
@@ -823,10 +833,14 @@
           if (loading) {
             console.log(`[${timestamp}] [renderCards] Still loading, rendering loading state`);
             try {
-              ReactDOM.render(React.createElement("div", { className: "alert alert-info" }, "Loading events..."), root);
+              ReactDOM.render(
+                React.createElement("div", { className: "alert alert-info text-center" }, "Loading events..."),
+                root
+              );
             } catch (e) {
               console.error(`[${timestamp}] [renderCards] ReactDOM.render failed for loading state:`, e);
               handleError("Render Loading State", e, "Failed to render loading state.");
+              setLoading(false);
             }
             return;
           }
@@ -890,7 +904,7 @@
                 React.createElement("div", { className: "panel-footer text-right" }, btn)
               )
             );
-          }) : [React.createElement("div", { key: "no", className: "alert alert-info" }, "No events found. Please check Events list or permissions.")];
+          }) : [React.createElement("div", { key: "no", className: "alert alert-info text-center" }, "No events found. Please check Events list or permissions.")];
 
           console.log(`[${timestamp}] [renderCards] Rendering ${cards.length} cards`);
           try {
@@ -898,6 +912,7 @@
           } catch (e) {
             console.error(`[${timestamp}] [renderCards] ReactDOM.render failed:`, e);
             handleError("Render Cards", e, "Failed to render event cards. Check React version or DOM setup.");
+            setLoading(false);
           }
         };
 
@@ -929,6 +944,7 @@
 
     } catch (err) {
       handleError("App Init", err, "Failed to initialize app.");
+      setLoading(false);
     }
   });
 })();
