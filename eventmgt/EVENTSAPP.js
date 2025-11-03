@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED UNREGISTER + REGISTRATION + EVENTLOOKUPID ===
+// === SP 2016 ON-PREM – FIXED LOADMYREGS HALT + UNREGISTER + REGISTRATION ===
 (function () {
   'use strict';
 
@@ -273,7 +273,7 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [loadMyRegs] Loading user registrations for:`, this.userEmail);
 
-          return new Promise(resolve => {
+          return new Promise((resolve, reject) => {
             const query = this.site + "/_api/web/lists/getbytitle('Registrations')/items" +
                           "?$filter=UserEmail eq '" + encodeURIComponent(this.userEmail) + "'" +
                           "&$select=Id,EventLookupId,Status,WaitlistPosition,Title,RegistrationDate,EventLookupId/Id" +
@@ -283,7 +283,7 @@
             $.ajax({
               url: query,
               headers: { Accept: "application/json; odata=verbose" },
-              timeout: 10000,
+              timeout: 15000, // Increased timeout
               success: d => {
                 try {
                   const registrations = (d.d?.results || []).map(r => {
@@ -314,16 +314,20 @@
                   });
                 }
               },
-              error: xhr => {
+              error: (xhr, status, error) => {
                 console.error(`[${timestamp}] [loadMyRegs] Failed to load registrations:`, {
                   status: xhr.status,
                   statusText: xhr.statusText,
-                  response: xhr.responseJSON || xhr.responseText
+                  response: xhr.responseJSON || xhr.responseText,
+                  error
                 });
-                handleError("Load My Registrations", xhr, "Failed to load your registrations. Please check permissions or list settings.");
+                let userMsg = "Failed to load your registrations. Please check permissions or list settings.";
+                if (xhr.status === 403) userMsg = "Access denied to Registrations list.";
+                if (xhr.status === 404) userMsg = "Registrations list not found.";
+                handleError("Load My Registrations", xhr, userMsg);
                 this.setState({ myRegs: [] }, () => {
                   this.renderCards();
-                  resolve(false);
+                  resolve(false); // Always resolve to prevent hang
                 });
               }
             });
@@ -344,6 +348,7 @@
             $.ajax({
               url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and Status eq 'Confirmed'&$select=Id",
               headers: { Accept: "application/json; odata=verbose" },
+              timeout: 10000,
               success: d => {
                 console.log(`[${timestamp}] [getRegCount] Count for Event ID ${id}:`, d.d?.results?.length || 0);
                 r(d.d?.results?.length || 0);
@@ -408,9 +413,12 @@
             }
             console.log(`[${timestamp}] [register] Event validated:`, ev.Title);
 
-            console.log(`[${timestamp}] [register] Refreshing my registrations...`);
-            await this.loadMyRegs();
-            console.log(`[${timestamp}] [register] My registrations refreshed`);
+            console.log(`[${timestamp}] [register] Before loadMyRegs...`);
+            await this.loadMyRegs().catch(err => {
+              console.error(`[${timestamp}] [register] loadMyRegs failed:`, err);
+              throw new Error("Failed to load registrations.");
+            });
+            console.log(`[${timestamp}] [register] After loadMyRegs`);
 
             const localReg = this.state.myRegs.find(r => r.EventLookupId === ev.Id);
             if (localReg) {
@@ -434,8 +442,9 @@
             const full = ev.MaxSeats && count >= ev.MaxSeats;
             console.log(`[${timestamp}] [register] Event ID ${id} - Seats: ${count}/${ev.MaxSeats || 'Unlimited'}, Full: ${full}`);
 
-            // Refresh digest before POST
-            console.log(`[${timestamp}] [register] Refreshing digest before registration...`);
+            console.log(`[${timestamp}] [register
+
+] Refreshing digest before registration...`);
             this.digest = await refreshDigest(this.site);
             if (!this.digest) {
               throw new Error("Failed to refresh digest for registration.");
@@ -475,7 +484,6 @@
           });
 
           try {
-            // Validate EventLookupId
             const eventExists = this.state.events.some(e => e.Id === id);
             if (!eventExists) {
               console.error(`[${timestamp}] [createReg] Event ID ${id} does not exist in Events list`);
@@ -541,6 +549,7 @@
             $.ajax({
               url: this.site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and Status eq 'Waitlisted'&$orderby=WaitlistPosition desc&$top=1&$select=WaitlistPosition",
               headers: { Accept: "application/json; odata=verbose" },
+              timeout: 5000,
               success: d => {
                 const pos = (d.d?.results?.[0]?.WaitlistPosition || 0) + 1;
                 console.log(`[${timestamp}] [getNextWaitlistPosition] Next position for Event ID ${id}:`, pos);
@@ -569,7 +578,6 @@
           $("#unregModal").modal("hide");
 
           try {
-            // Refresh digest before DELETE
             console.log(`[${timestamp}] [unregister] Refreshing digest before unregister...`);
             this.digest = await refreshDigest(this.site);
             if (!this.digest) {
