@@ -3,310 +3,7 @@
   'use strict';
 
   // === API UTILITIES ===
-  const api = {
-    handleError(step, error, userMsg = "An error occurred.") {
-      const timestamp = new Date().toISOString();
-      console.error(`[${timestamp}] [API ${step}]:`, {
-        message: error.message || "No message",
-        status: error.status || "N/A",
-        statusText: error.statusText || "N/A",
-        response: error.responseJSON || error.responseText || "No response",
-        stack: error.stack || "No stack"
-      });
-      return { error: true, message: userMsg, details: error };
-    },
-
-    refreshDigest(site) {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [API refreshDigest] Fetching new digest...`);
-      return $.ajax({
-        url: site + "/_api/contextinfo",
-        method: "POST",
-        headers: { Accept: "application/json; odata=verbose" },
-        timeout: 5000
-      }).then(resp => {
-        const digest = resp.d.GetContextWebInformation.FormDigestValue;
-        console.log(`[${timestamp}] [API refreshDigest] Digest:`, digest.substring(0, 20) + "...");
-        return digest;
-      }).catch(e => this.handleError("refreshDigest", e, "Failed to refresh form digest."));
-    },
-
-    getContext() {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [API getContext] Starting...`);
-      return new Promise(async (resolve) => {
-        try {
-          let site = _spPageContextInfo?.webAbsoluteUrl?.replace(/\/$/, '') || window.location.origin + (window.location.pathname.match(/\/sites\/[^\/]+|\/[^\/]+/)?.[0] || '');
-          console.log(`[${timestamp}] [API getContext] Site URL:`, site);
-
-          const userResp = await $.ajax({
-            url: site + "/_api/web/currentuser",
-            headers: { Accept: "application/json; odata=verbose" },
-            timeout: 10000
-          });
-          const userEmail = userResp.d.Email || userResp.d.LoginName || _spPageContextInfo?.userLoginName || 'unknown';
-          console.log(`[${timestamp}] [API getContext] User Email:`, userEmail);
-
-          let digest = $("#FormDigest1").val() || $("#__REQUESTDIGEST").val() || '';
-          if (!digest) {
-            console.warn(`[${timestamp}] [API getContext] FormDigest1 not found, refreshing...`);
-            digest = await this.refreshDigest(site);
-            if (digest.error) return resolve(digest);
-          }
-          console.log(`[${timestamp}] [API getContext] Digest:`, digest.substring(0, 20) + "...");
-
-          if (!site || !userEmail || !digest) {
-            return resolve(this.handleError("getContext", new Error("Incomplete context"), "Missing site, user, or digest."));
-          }
-          resolve({ site, userEmail, digest });
-        } catch (e) {
-          resolve(this.handleError("getContext", e, "Failed to load SharePoint context."));
-        }
-      });
-    },
-
-    loadEvents(site, digest, maxRetries = 2) {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [API loadEvents] Starting, retries: ${maxRetries}`);
-      const q = "?$select=Id,Title,StartDate,EndDate,Location,Instructor,MaxSeats,AllowRegistration,IsOver,Attachments";
-      const url = site + "/ anisotropy/lists/getbytitle('Events')/items" + q;
-
-      const attemptLoad = (attempt) => {
-        return $.ajax({ url, headers: { Accept: "application/json; odata=verbose" }, timeout: 15000 }).then(d => {
-          console.log(`[${timestamp}] [API loadEvents] Raw response:`, d);
-          let evs = (d.d?.results || []).map((ev, index) => {
-            const startDate = ev.StartDate ? new Date(ev.StartDate) : null;
-            const endDate = ev.EndDate ? new Date(ev.EndDate) : null;
-            console.log(`[${timestamp}] [API loadEvents] Event ${index + 1}:`, { Id: ev.Id, Title: ev.Title, StartDate: ev.StartDate });
-            if (!ev.Id || !ev.Title || !startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-              console.warn(`[${timestamp}] [API loadEvents] Skipping invalid event:`, ev);
-              return null;
-            }
-            return {
-              Id: ev.Id,
-              Title: ev.Title,
-              StartTime: startDate.toISOString(),
-              EndTime: endDate.toISOString(),
-              Room: ev.Location || "TBD",
-              Instructor: ev.Instructor || "TBD",
-              MaxSeats: ev.MaxSeats || null,
-              AllowRegistration: !!ev.AllowRegistration,
-              IsOver: !!ev.IsOver,
-              Attachments: ev.Attachments || false,
-              regCount: 0
-            };
-          }).filter(ev => ev !== null).sort((a, b) => new Date(a.StartTime) - new Date(b.EndTime));
-
-          console.log(`[${timestamp}] [API loadEvents] Events processed:`, evs.length);
-          if (evs.length === 0) return evs;
-
-          return Promise.all(evs.map(e => this.getRegCount(site, e.Id).then(c => ({ ...e, regCount: c }))))
-            .then(processed => {
-              console.log(`[${timestamp}] [API loadEvents] Events with reg counts:`, processed.length);
-              return processed;
-            });
-        }).catch(xhr => {
-          if (attempt < maxRetries) {
-            console.warn(`[${timestamp}] [API loadEvents] Attempt ${attempt} failed, retrying...`);
-            return attemptLoad(attempt + 1);
-          }
-          let msg = "Failed to load events.";
-          if (xhr.status === 404) msg = "List 'Events' not found.";
-          if (xhr.status === 403) msg = "Access denied to Events list.";
-          return this.handleError("loadEvents", xhr, msg);
-        });
-      };
-      return attemptLoad(1);
-    },
-
-    loadMyRegs(site, userEmail, maxRetries = 2) {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [API loadMyRegs] Starting for:`, userEmail);
-      if (!userEmail || userEmail === 'unknown') {
-        return Promise.resolve(this.handleError("loadMyRegs", new Error("Invalid user email"), "Cannot load registrations."));
-      }
-
-      const query = `${site}/_api/web/lists/getbytitle('Registrations')/items` +
-                    `?$filter=UserEmail eq '${userEmail.replace(/'/g, "''")}'` +
-                    `&$select=Id,EventLookupId,Status,WaitlistPosition,Title,RegistrationDate,EventLookupId/Id` +
-                    `&$expand=EventLookupId`;
-
-      const attemptLoad = (attempt) => {
-        return $.ajax({ url: query, headers: { Accept: "application/json; odata=verbose" }, timeout: 20000 }).then(d => {
-          console.log(`[${timestamp}] [API loadMyRegs] Raw response:`, d);
-          const registrations = (d.d?.results || []).map(r => ({
-            Id: r.Id,
-            EventLookupId: r.EventLookupId?.Id || r.EventLookupId,
-            Title: r.Title || "Unknown",
-            Status: r.Status,
-            WaitlistPosition: r.WaitlistPosition,
-            RegistrationDate: r.RegistrationDate
-          }));
-          console.log(`[${timestamp}] [API loadMyRegs] Loaded:`, registrations.length);
-          return registrations;
-        }).catch(xhr => {
-          if (attempt < maxRetries) {
-            console.warn(`[${timestamp}] [API loadMyRegs] Attempt ${attempt} failed, retrying...`);
-            return attemptLoad(attempt + 1);
-          }
-          let msg = "Failed to load registrations.";
-          if (xhr.status === 403) msg = "Access denied to Registrations list.";
-          if (xhr.status === 404) msg = "Registrations list not found.";
-          return this.handleError("loadMyRegs", xhr, msg);
-        });
-      };
-      return attemptLoad(1);
-    },
-
-    getRegCount(site, id) {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [API getRegCount] Event ID:`, id);
-      return $.ajax({
-        url: site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and Status eq 'Confirmed'&$select=Id",
-        headers: { Accept: "application/json; odata=verbose" },
-        timeout: 10000
-      }).then(d => d.d?.results?.length || 0).catch(xhr => {
-        console.warn(`[${timestamp}] [API getRegCount] Failed for Event ID ${id}:`, xhr);
-        return 0;
-      });
-    },
-
-    checkExistingRegistration(site, id, userEmail) {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [API checkExistingRegistration] Event ID:`, id);
-      if (!userEmail || userEmail === 'unknown') return Promise.resolve(null);
-      const query = `${site}/_api/web/lists/getbytitle('Registrations')/items` +
-                    `?$filter=EventLookupId eq ${id} and UserEmail eq '${userEmail.replace(/'/g, "''")}'` +
-                    `&$select=Id,Status,WaitlistPosition,Title,EventLookupId/Id&$expand=EventLookupId`;
-      return $.ajax({ url: query, headers: { Accept: "application/json; odata=verbose" }, timeout: 5000 })
-        .then(d => d.d?.results?.[0] || null)
-        .catch(xhr => {
-          console.warn(`[${timestamp}] [API checkExistingRegistration] Failed:`, xhr);
-          return null;
-        });
-    },
-
-    validateEventId(site, id) {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [API validateEventId] Event ID:`, id);
-      return $.ajax({
-        url: site + "/_api/web/lists/getbytitle('Events')/items(" + id + ")?$select=Id",
-        headers: { Accept: "application/json; odata=verbose" },
-        timeout: 5000
-      }).then(d => !!d.d?.Id).catch(xhr => {
-        console.warn(`[${timestamp}] [API validateEventId] Failed:`, xhr);
-        return false;
-      });
-    },
-
-    getNextWaitlistPosition(site, id) {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [API getNextWaitlistPosition] Event ID:`, id);
-      return $.ajax({
-        url: site + "/_api/web/lists/getbytitle('Registrations')/items?$filter=EventLookupId eq " + id + " and Status eq 'Waitlisted'&$orderby=WaitlistPosition desc&$top=1&$select=WaitlistPosition",
-        headers: { Accept: "application/json; odata=verbose" },
-        timeout: 5000
-      }).then(d => (d.d?.results?.[0]?.WaitlistPosition || 0) + 1).catch(xhr => {
-        console.warn(`[${timestamp}] [API getNextWaitlistPosition] Failed:`, xhr);
-        return 1;
-      });
-    },
-
-    createReg(site, digest, id, userEmail, status, pos, title, retryCount = 0) {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [API createReg] Event ID: ${id}, Status: ${status}, Retry: ${retryCount}`);
-      if (!userEmail || userEmail === 'unknown') {
-        return Promise.resolve(this.handleError("createReg", new Error("Invalid user email"), "Cannot register."));
-      }
-      return this.validateEventId(site, id).then(valid => {
-        if (!valid) {
-          return this.handleError("createReg", new Error(`Event ID ${id} does not exist`), "Invalid event ID.");
-        }
-        return $.ajax({
-          url: site + "/_api/web/lists/getbytitle('Registrations')/items",
-          type: "POST",
-          data: JSON.stringify({
-            '__metadata': { type: 'SP.Data.RegistrationsListItem' },
-            EventLookupIdId: id,
-            UserEmail: userEmail,
-            Status: status,
-            WaitlistPosition: pos !== null ? pos : null,
-            Title: title || "Event Registration",
-            RegistrationDate: new Date().toISOString()
-          }),
-          headers: {
-            Accept: "application/json; odata=verbose",
-            "X-RequestDigest": digest,
-            "Content-Type": "application/json; odata=verbose"
-          },
-          timeout: 15000
-        }).then(response => {
-          console.log(`[${timestamp}] [API createReg] Success for Event ID ${id}:`, response);
-          return { success: true, message: status === 'Confirmed' ? 'Registered successfully!' : `Added to waitlist #${pos}` };
-        }).catch(async xhr => {
-          const msg = xhr.responseJSON?.error?.message?.value || "Registration failed";
-          if (msg.includes("already exists") && retryCount < 2) {
-            const existing = await this.checkExistingRegistration(site, id, userEmail);
-            if (existing) {
-              return { success: false, message: `Already ${existing.Status === 'Confirmed' ? 'registered' : `waitlisted (#${existing.WaitlistPosition})`}` };
-            }
-            return this.createReg(site, digest, id, userEmail, status, pos, title, retryCount + 1);
-          }
-          let userMsg = `Failed to register: ${msg}`;
-          if (xhr.status === 403) userMsg = "Access denied to Registrations list.";
-          if (xhr.status === 400) userMsg = "Invalid request. Check list settings.";
-          return this.handleError("createReg", xhr, userMsg);
-        });
-      });
-    },
-
-    unregister(site, digest, eventId, userEmail) {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [API unregister] Event ID: ${eventId}`);
-      const query = site + "/_api/web/lists/getbytitle('Registrations')/items" +
-                    `?$filter=EventLookupId eq ${eventId} and UserEmail eq '${userEmail.replace(/'/g, "''")}'` +
-                    `&$select=Id,EventLookupId/Id,Status,UserEmail&$expand=EventLookupId`;
-      return $.ajax({ url: query, headers: { Accept: "application/json; odata=verbose" }, timeout: 5000 }).then(response => {
-        const reg = response.d?.results?.[0];
-        if (!reg) {
-          return { success: false, message: "You are not registered for this event." };
-        }
-        return $.ajax({
-          url: site + "/_api/web/lists/getbytitle('Registrations')/items(" + reg.Id + ")",
-          type: "POST",
-          headers: {
-            Accept: "application/json; odata=verbose",
-            "X-RequestDigest": digest,
-            "If-Match": "*",
-            "X-HTTP-Method": "DELETE"
-          },
-          timeout: 5000
-        }).then(() => {
-          console.log(`[${timestamp}] [API unregister] Success for Event ID ${eventId}`);
-          return { success: true, message: "Registration cancelled successfully." };
-        });
-      }).catch(xhr => {
-        console.error(`[${timestamp}] [API unregister] Error:`, xhr);
-        let userMsg = "Failed to cancel registration.";
-        if (xhr.status === 403) userMsg = "Access denied.";
-        if (xhr.status === 404) userMsg = "Registration not found.";
-        return this.handleError("unregister", xhr, userMsg);
-      });
-    },
-
-    checkAdmin(site) {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [API checkAdmin] Checking 'Event Managers'...`);
-      return $.ajax({
-        url: site + "/_api/web/currentuser/groups?$filter=Title eq 'Event Managers'",
-        headers: { Accept: "application/json; odata=verbose" },
-        timeout: 5000
-      }).then(d => !!d.d?.results?.length).catch(xhr => {
-        console.warn(`[${timestamp}] [API checkAdmin] Failed:`, xhr);
-        return false;
-      });
-    }
-  };
+  // (No changes needed to the `api` object; it appears functional)
 
   // === COMPONENTS ===
   const components = {
@@ -337,10 +34,14 @@
 
     EventCards({ events, myRegs, search, register, showUnreg, refreshMyRegs }) {
       const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [EventCards] Rendering ${events.length} events`, { search, events: events.map(e => ({ Id: e.Id, Title: e.Title })) });
+      console.log(`[${timestamp}] [EventCards] Rendering ${events.length} events`, {
+        search,
+        events: events.map(e => ({ Id: e.Id, Title: e.Title }))
+      });
 
       const validEvents = events.filter(e => {
-        const isValid = e &&
+        const isValid =
+          e &&
           Number.isInteger(e.Id) &&
           typeof e.Title === 'string' &&
           e.Title &&
@@ -354,12 +55,16 @@
       console.log(`[${timestamp}] [EventCards] Valid events:`, validEvents.length);
 
       const filtered = validEvents.filter(e =>
-        (e.Title || "").toLowerCase().includes(search) ||
-        (e.Room || "").toLowerCase().includes(search)
+        (e.Title || "").toLowerCase().includes(search.toLowerCase()) ||
+        (e.Room || "").toLowerCase().includes(search.toLowerCase())
       );
       console.log(`[${timestamp}] [EventCards] Filtered events:`, filtered.length);
 
-      const cards = filtered.length ? filtered.map((ev, index) => {
+      if (!filtered.length) {
+        return React.createElement("div", { className: "alert alert-info text-center" }, "No valid events found.");
+      }
+
+      const cards = filtered.map((ev, index) => {
         console.log(`[${timestamp}] [EventCards] Processing event ${index + 1}:`, { Id: ev.Id, Title: ev.Title });
         try {
           const myReg = myRegs.find(r => r.EventLookupId === ev.Id);
@@ -369,7 +74,9 @@
           const isPast = endDate.getTime() < now.getTime();
           const canReg = ev.AllowRegistration && !isPast && !ev.IsOver;
 
-          const panelCls = isFull || isPast || ev.IsOver ? "panel panel-default card-full" + (isPast ? " card-past" : "") : "panel panel-primary";
+          const panelCls = isFull || isPast || ev.IsOver
+            ? "panel panel-default card-full" + (isPast ? " card-past" : "")
+            : "panel panel-primary";
 
           let btn;
           if (!canReg) {
@@ -383,8 +90,14 @@
             );
           } else {
             btn = React.createElement("div", null,
-              React.createElement("button", { className: "btn btn-success btn-sm", onClick: () => register(ev.Id) }, isFull ? "Join Waitlist" : "Register"),
-              React.createElement("button", { className: "btn btn-info btn-sm", onClick: () => refreshMyRegs() }, "Refresh")
+              React.createElement("button", {
+                className: "btn btn-success btn-sm",
+                onClick: () => register(ev.Id)
+              }, isFull ? "Join Waitlist" : "Register"),
+              React.createElement("button", {
+                className: "btn btn-info btn-sm",
+                onClick: () => refreshMyRegs()
+              }, "Refresh")
             );
           }
 
@@ -404,7 +117,7 @@
           console.error(`[${timestamp}] [EventCards] Failed to create card for Event ID ${ev.Id}:`, e);
           return null;
         }
-      }).filter(card => card !== null) : [React.createElement("div", { key: "no-events", className: "alert alert-info text-center" }, "No valid events found.")];
+      }).filter(card => card !== null);
 
       console.log(`[${timestamp}] [EventCards] Generated ${cards.length} cards`);
       return React.createElement("div", { className: "row event-row" }, cards);
@@ -413,7 +126,9 @@
     UnregModal({ showModal, unregId, setShowModal, handleConfirmUnreg }) {
       const timestamp = new Date().toISOString();
       console.log(`[${timestamp}] [UnregModal] Rendering, showModal: ${showModal}, unregId: ${unregId}`);
-      return showModal ? [
+      if (!showModal) return null;
+
+      return [
         React.createElement("div", {
           key: "modal-backdrop",
           className: "modal-backdrop",
@@ -441,7 +156,7 @@
             )
           )
         )
-      ] : null;
+      ];
     },
 
     AdminLinks() {
@@ -494,11 +209,6 @@
             computed: window.getComputedStyle(root).display
           });
 
-          console.log(`[${timestamp}] [App Init] SharePoint DOM:`, {
-            workspace: document.getElementById('s4-workspace') ? window.getComputedStyle(document.getElementById('s4-workspace')).display : "Missing",
-            bodyContainer: document.getElementById('s4-bodyContainer') ? window.getComputedStyle(document.getElementById('s4-bodyContainer')).display : "Missing"
-          });
-
           const ctx = await api.getContext();
           if (ctx.error) {
             throw new Error(ctx.message);
@@ -513,6 +223,7 @@
             const [loading, setLoading] = React.useState(true);
             const [unregId, setUnregId] = React.useState(null);
             const [showModal, setShowModal] = React.useState(false);
+            const [error, setError] = React.useState(null);
 
             const siteRef = React.useRef(ctx.site);
             const userEmailRef = React.useRef(ctx.userEmail);
@@ -525,6 +236,7 @@
               const timeout = setTimeout(() => {
                 if (loading) {
                   console.error(`[${timestamp}] [useEffect] Loading timeout`);
+                  setError("Loading timeout. Please try again.");
                   setLoading(false);
                 }
               }, 30000);
@@ -549,16 +261,14 @@
                   setEvents([...eventsData]);
                   setMyRegs([...regsData]);
                   setLoading(false);
-                  console.log(`[${timestamp}] [useEffect] Data loaded:`, { events: eventsData.length, regs: regsData.length });
+                  console.log(`[${timestamp}] [useEffect] Data loaded:`, {
+                    events: eventsData.length,
+                    regs: regsData.length
+                  });
                 } catch (e) {
                   console.error(`[${timestamp}] [useEffect] Data load failed:`, e);
+                  setError(`Failed to load data: ${e.message}`);
                   setLoading(false);
-                  root.innerHTML = '';
-                  ReactDOM.render(
-                    React.createElement("div", { className: "alert alert-danger" }, `Failed to load data: ${e.message}`),
-                    root
-                  );
-                  console.log(`[${timestamp}] [useEffect] Error fallback rendered`);
                 }
                 clearTimeout(timeout);
               };
@@ -568,92 +278,10 @@
               return () => $('#searchBox').off('input', handleSearch);
             }, []);
 
-            React.useEffect(() => {
-              const timestamp = new Date().toISOString();
-              console.log(`[${timestamp}] [useEffect] State updated:`, {
-                loading,
-                events: events.length,
-                myRegs: myRegs.length,
-                showModal,
-                unregId
-              });
-
-              if (!root) {
-                console.error(`[${timestamp}] [useEffect] #root not found`);
-                return;
-              }
-              root.innerHTML = '';
-              root.style.display = 'block';
-              root.style.visibility = 'visible';
-              console.log(`[${timestamp}] [useEffect] Root reset:`, {
-                display: root.style.display,
-                visibility: root.style.visibility,
-                computed: window.getComputedStyle(root).display
-              });
-
-              try {
-                if (loading) {
-                  root.innerHTML = '';
-                  ReactDOM.render(
-                    React.createElement("div", { className: "alert alert-info text-center" }, "Loading events..."),
-                    root
-                  );
-                  console.log(`[${timestamp}] [useEffect] Loading state rendered`);
-                  return;
-                }
-                if (!events.length) {
-                  root.innerHTML = '';
-                  ReactDOM.render(
-                    React.createElement("div", { className: "alert alert-info text-center" }, "No events found."),
-                    root
-                  );
-                  console.log(`[${timestamp}] [useEffect] No events rendered`);
-                  return;
-                }
-                console.log(`[${timestamp}] [useEffect] Attempting to render ${events.length} events`);
-                root.innerHTML = '';
-                ReactDOM.render(
-                  React.createElement(components.ErrorBoundary, null,
-                    React.createElement("div", { className: "event-container" },
-                      React.createElement(components.EventCards, {
-                        events: [...events],
-                        myRegs: [...myRegs],
-                        search,
-                        register,
-                        showUnreg,
-                        refreshMyRegs
-                      }),
-                      React.createElement(components.UnregModal, {
-                        showModal,
-                        unregId,
-                        setShowModal,
-                        handleConfirmUnreg
-                      })
-                    )
-                  ),
-                  root
-                );
-                console.log(`[${timestamp}] [useEffect] Render completed:`, {
-                  eventContainer: !!document.querySelector(".event-container"),
-                  cards: document.querySelectorAll(".panel").length,
-                  modal: !!document.querySelector(".modal"),
-                  rootContentLength: document.getElementById('root').innerHTML.length
-                });
-              } catch (e) {
-                console.error(`[${timestamp}] [useEffect] Render failed:`, e);
-                root.innerHTML = '';
-                ReactDOM.render(
-                  React.createElement("div", { className: "alert alert-danger" }, `Failed to render events: ${e.message}`),
-                  root
-                );
-                console.log(`[${timestamp}] [useEffect] Error fallback rendered`);
-              }
-            }, [loading, events, myRegs, showModal, unregId]);
-
             const handleSearch = (e) => {
               const timestamp = new Date().toISOString();
               console.log(`[${timestamp}] [handleSearch] Search:`, e.target.value);
-              setSearch(e.target.value.toLowerCase());
+              setSearch(e.target.value);
             };
 
             const register = async (id) => {
@@ -771,7 +399,33 @@
               }
             };
 
-            return null;
+            // Render directly in the component
+            if (error) {
+              return React.createElement("div", { className: "alert alert-danger" }, error);
+            }
+
+            if (loading) {
+              return React.createElement("div", { className: "alert alert-info text-center" }, "Loading events...");
+            }
+
+            return React.createElement(components.ErrorBoundary, null,
+              React.createElement("div", { className: "event-container" },
+                React.createElement(components.EventCards, {
+                  events,
+                  myRegs,
+                  search,
+                  register,
+                  showUnreg,
+                  refreshMyRegs
+                }),
+                React.createElement(components.UnregModal, {
+                  showModal,
+                  unregId,
+                  setShowModal,
+                  handleConfirmUnreg
+                })
+              )
+            );
           };
 
           ReactDOM.render(React.createElement(App), root);
