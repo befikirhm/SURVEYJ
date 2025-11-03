@@ -162,7 +162,7 @@
             (e.Title || "").toLowerCase().includes(search) ||
             (e.Room || "").toLowerCase().includes(search)
           );
-          console.log(`[${timestamp}] [EventCards] Filtered events:`, filtered.length);
+          console.log(`[${timestamp}] [EventCards] Filtered events:`, filtered.length, filtered);
 
           const cards = filtered.length ? filtered.map(ev => {
             const myReg = myRegs.find(r => r.EventLookupId === ev.Id);
@@ -273,12 +273,12 @@
           ] : null;
         };
 
-        // useEffect for rendering
+        // Dedicated useEffect for loading state
         React.useEffect(() => {
           const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [useEffect] Rendering, state:`, { loading, events: events.length, myRegs: myRegs.length, showModal, unregId });
+          console.log(`[${timestamp}] [useEffect] Loading state changed:`, { loading, events: events.length, myRegs: myRegs.length });
           renderApp();
-        }, [events, myRegs, search, loading, showModal, unregId]);
+        }, [loading, events, myRegs, search, showModal, unregId]);
 
         // useEffect for componentDidMount
         React.useEffect(() => {
@@ -320,6 +320,7 @@
                 setEvents([...loadedEvents]);
                 setMyRegs([...loadedRegs]);
                 setLoading(false);
+                console.log(`[${timestamp}] [useEffect] State updated`, { events: loadedEvents.length, regs: loadedRegs.length, loading: false });
               })
               .catch(err => {
                 console.error(`[${timestamp}] [useEffect] Error loading data:`, err);
@@ -972,23 +973,17 @@
 
           $("#loading").hide();
 
-          if (loading) {
-            console.log(`[${timestamp}] [renderApp] Still loading, rendering loading state`);
-            try {
+          try {
+            if (loading) {
+              console.log(`[${timestamp}] [renderApp] Still loading, rendering loading state`);
               ReactDOM.render(
                 React.createElement("div", { className: "alert alert-info text-center" }, "Loading events..."),
                 root
               );
               console.log(`[${timestamp}] [renderApp] Loading state rendered`);
-            } catch (e) {
-              console.error(`[${timestamp}] [renderApp] ReactDOM.render failed for loading state:`, e);
-              handleError("Render Loading State", e, "Failed to render loading state.");
-              setLoading(false);
+              return;
             }
-            return;
-          }
 
-          try {
             ReactDOM.render(
               React.createElement(ErrorBoundary, null,
                 React.createElement("div", null,
