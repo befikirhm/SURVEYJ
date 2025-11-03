@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – REACT 17 INITIALIZATION FIX ===
+// === SP 2016 ON-PREM – REACT 17 WITH RENDER FALLBACK ===
 (function () {
   'use strict';
 
@@ -17,8 +17,7 @@
       root.innerHTML = '';
       try {
         const errorElement = React.createElement("div", { className: "alert alert-danger" }, `${userMsg}\n\nCheck F12 Console for details.`);
-        const reactRoot = ReactDOM.createRoot(root);
-        reactRoot.render(errorElement);
+        ReactDOM.render(errorElement, root);
         console.log(`[${timestamp}] [handleError] Error rendered to #root`);
       } catch (e) {
         console.error(`[${timestamp}] [handleError] Failed to render error:`, e);
@@ -37,10 +36,10 @@
       jQuery: typeof $ === "function" ? "Loaded" : "Not loaded",
       React: typeof React !== "undefined" ? `Loaded ${React.version}` : "Not loaded",
       ReactDOM: typeof ReactDOM !== "undefined" ? "Loaded" : "Not loaded",
-      createRoot: typeof ReactDOM.createRoot === "function" ? "Available" : "Not available"
+      render: typeof ReactDOM.render === "function" ? "Available" : "Not available"
     };
     console.log(`[${timestamp}] [validateDependencies] Dependency check:`, checks);
-    if (checks.jQuery !== "Loaded" || checks.React === "Not loaded" || checks.ReactDOM === "Not loaded" || checks.createRoot !== "Available") {
+    if (checks.jQuery !== "Loaded" || checks.React === "Not loaded" || checks.ReactDOM === "Not loaded" || checks.render !== "Available") {
       throw new Error("Required dependencies missing: " + JSON.stringify(checks));
     }
     if (React.version !== "17.0.2") {
@@ -134,7 +133,9 @@
   // === MAIN APP ===
   $(document).ready(async function () {
     const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] [App Init] DOM Ready. Initializing...`);
+    console.log(`[${timestamp}] [App خودرو
+
+System: Init] DOM Ready. Initializing...`);
 
     try {
       // Validate dependencies
@@ -164,7 +165,6 @@
       });
 
       let appInstance = null;
-      let reactRoot = null;
 
       const ctx = await getContext();
       if (!ctx) {
@@ -262,7 +262,9 @@
               } else if (myReg) {
                 const status = myReg.Status === 'Confirmed'
                   ? React.createElement("button", { className: "btn btn-success btn-sm disabled" }, "Registered")
-                  : React.createElement("button", { className: "btn btn-warning btn-sm disabled" }, `Waitlist #${myReg.WaitlistPosition}`);
+                  : React.createElement("button", { Vergleich
+
+System: { className: "btn btn-warning btn-sm disabled" }, `Waitlist #${myReg.WaitlistPosition}`);
                 btn = React.createElement("div", null, status,
                   React.createElement("button", { className: "btn btn-danger btn-sm", onClick: () => showUnreg(ev.Id) }, "Cancel")
                 );
@@ -462,15 +464,14 @@
           try {
             const adminRoot = document.getElementById("adminLinks");
             if (!adminRoot) {
-              console.error(`[${timestamp}] [rebuildAdminLinks] #adminLinks element not found`);
+              console.error(`[${timestamp}] [renderAdminLinks] #adminLinks element not found`);
               return;
             }
             const links = React.createElement("div", null,
               React.createElement("a", { href: "AdminDashboard.aspx", className: "btn btn-warning btn-block mb-2" }, "Admin Dashboard"),
               React.createElement("a", { href: "Survey.aspx", className: "btn btn-info btn-block" }, "Design Survey")
             );
-            const reactAdminRoot = ReactDOM.createRoot(adminRoot);
-            reactAdminRoot.render(links);
+            ReactDOM.render(links, adminRoot);
             console.log(`[${timestamp}] [renderAdminLinks] Admin links rendered`);
           } catch (e) {
             handleError("Render Admin Links", e, "Failed to render admin links.");
@@ -977,7 +978,7 @@
               throw new Error("Failed to refresh digest for unregister.");
             }
 
-            const query = `${siteRef.current}/_api/web/lists/getbytitle('Registrations')/items` +
+            const query = siteRef.current + "/_api/web/lists/getbytitle('Registrations')/items" +
                           `?$filter=EventLookupId eq ${eventId} and UserEmail eq '${userEmailRef.current.replace(/'/g, "''")}'` +
                           `&$select=Id,EventLookupId/Id,Status,UserEmail&$expand=EventLookupId`;
             console.log(`[${timestamp}] [unregister] Query URL:`, query);
@@ -1083,8 +1084,7 @@
             if (loading) {
               console.log(`[${timestamp}] [renderApp] Still loading, rendering loading state`);
               const loadingElement = React.createElement("div", { className: "alert alert-info text-center" }, "Loading events...");
-              reactRoot = reactRoot || ReactDOM.createRoot(root);
-              reactRoot.render(loadingElement);
+              ReactDOM.render(loadingElement, root);
               console.log(`[${timestamp}] [renderApp] Loading state rendered, DOM check:`, {
                 rootContent: root.innerHTML.substring(0, 100) + "..."
               });
@@ -1094,8 +1094,7 @@
             if (!events.length) {
               console.warn(`[${timestamp}] [renderApp] No events to render`, events);
               const noEventsElement = React.createElement("div", { className: "alert alert-info text-center" }, "No events found. Please check Events list or permissions.");
-              reactRoot = reactRoot || ReactDOM.createRoot(root);
-              reactRoot.render(noEventsElement);
+              ReactDOM.render(noEventsElement, root);
               console.log(`[${timestamp}] [renderApp] No events state rendered, DOM check:`, {
                 rootContent: root.innerHTML.substring(0, 100) + "..."
               });
@@ -1116,8 +1115,7 @@
                 React.createElement(UnregModal)
               )
             );
-            reactRoot = reactRoot || ReactDOM.createRoot(root);
-            reactRoot.render(appElement);
+            ReactDOM.render(appElement, root);
             console.log(`[${timestamp}] [renderApp] Rendered successfully, checking DOM:`, {
               rootContent: root.innerHTML.substring(0, 100) + "...",
               eventContainer: !!document.querySelector(".event-container"),
@@ -1144,13 +1142,12 @@
 
       // Render App
       try {
-        reactRoot = ReactDOM.createRoot(root);
-        reactRoot.render(React.createElement(App));
+        ReactDOM.render(React.createElement(App), root);
         $("#loading").show();
-        console.log(`[${timestamp}] [App Init] App rendered with createRoot, loading shown`);
+        console.log(`[${timestamp}] [App Init] App rendered with ReactDOM.render, loading shown`);
       } catch (e) {
         console.error(`[${timestamp}] [App Init] Failed to render app:`, e);
-        throw new Error("Failed to initialize React root: " + e.message);
+        throw new Error("Failed to initialize React app: " + e.message);
       }
     } catch (err) {
       handleError("App Init", err, "Failed to initialize app. Check React CDN or console.");
