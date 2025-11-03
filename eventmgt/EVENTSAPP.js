@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED UNREGISTER AND UNREGID NULL ===
+// === SP 2016 ON-PREM – FIXED #confirmUnreg BUTTON NOT RESPONSIVE ===
 (function () {
   'use strict';
 
@@ -168,6 +168,15 @@
             return;
           }
 
+          // Initialize Bootstrap modal
+          if ($("#unregModal").length) {
+            console.log(`[${timestamp}] [useEffect] Initializing unregModal...`);
+            $("#unregModal").modal({ show: false });
+          } else {
+            console.error(`[${timestamp}] [useEffect] #unregModal element not found`);
+            alert("Error: #unregModal element not found in DOM. Check EventsDashboard.aspx.");
+          }
+
           appInstance = {
             unregister,
             refreshMyRegs,
@@ -202,25 +211,36 @@
               });
           });
 
-          // Attach unregister event handler
+          // Attach #confirmUnreg event handler with delegation
           const handleConfirmUnreg = () => {
-            console.log(`[${timestamp}] [confirmUnreg] Unregister button clicked, unregId:`, unregId);
+            const localTimestamp = new Date().toISOString();
+            console.log(`[${localTimestamp}] [confirmUnreg] Unregister button clicked, unregId:`, unregId);
             if (appInstance && typeof appInstance.unregister === 'function') {
-              appInstance.unregister(unregId);
+              if (unregId !== null && Number.isInteger(unregId) && unregId > 0) {
+                appInstance.unregister(unregId);
+              } else {
+                console.error(`[${localTimestamp}] [confirmUnreg] Invalid unregId:`, unregId);
+                alert("Error: Invalid event ID for unregister. Please try again.");
+              }
             } else {
-              console.error(`[${timestamp}] [confirmUnreg] appInstance.unregister is not a function`, appInstance);
+              console.error(`[${localTimestamp}] [confirmUnreg] appInstance.unregister is not a function`, appInstance);
               alert("Error: Unable to cancel registration. Please check console for details.");
             }
           };
 
-          $(document).off('click', '#confirmUnreg').on('click', '#confirmUnreg', handleConfirmUnreg);
+          // Use event delegation to handle dynamic modal content
+          $(document).off('click', '#confirmUnreg').on('click', '#confirmUnreg', (e) => {
+            e.preventDefault(); // Prevent default modal behavior
+            console.log(`[${new Date().toISOString()}] [confirmUnreg] Event triggered for #confirmUnreg`);
+            handleConfirmUnreg();
+          });
 
           return () => {
             $('#searchBox').off('input', handleSearch);
             $(document).off('click', '#confirmUnreg');
             clearTimeout(timeout);
           };
-        }, [unregId]); // Add unregId to dependencies to ensure handler updates
+        }, [unregId]);
 
         const handleSearch = (e) => {
           const timestamp = new Date().toISOString();
@@ -279,6 +299,7 @@
           console.log(`[${timestamp}] [loadEvents] STARTED`);
 
           return new Promise((resolve, reject) => {
+           _MATH_4
             const q = "?$select=Id,Title,StartDate,EndDate,Location,Instructor,MaxSeats,AllowRegistration,IsOver,Attachments";
             const url = siteRef.current + "/_api/web/lists/getbytitle('Events')/items" + q;
 
@@ -773,6 +794,7 @@
           }
           setUnregId(id);
           $("#unregModal").modal("show");
+          console.log(`[${timestamp}] [showUnreg] Modal shown, unregId set to:`, id);
         };
 
         const unregister = async (eventId) => {
