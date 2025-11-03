@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED QUERY STRING IN LOADMYREGS + REGISTRATION ===
+// === SP 2016 ON-PREM – FIXED REGISTRATION NOT ADDED TO LIST ===
 (function () {
   'use strict';
 
@@ -285,7 +285,6 @@
               return;
             }
 
-            // Fixed query string with proper single quotes
             const query = `${this.site}/_api/web/lists/getbytitle('Registrations')/items` +
                           `?$filter=UserEmail eq '${this.userEmail.replace(/'/g, "''")}'` +
                           `&$select=Id,EventLookupId,Status,WaitlistPosition,Title,RegistrationDate,EventLookupId/Id` +
@@ -295,7 +294,7 @@
             $.ajax({
               url: query,
               headers: { Accept: "application/json; odata=verbose" },
-              timeout: 20000, // Increased timeout
+              timeout: 20000,
               success: d => {
                 try {
                   const registrations = (d.d?.results || []).map(r => {
@@ -512,16 +511,27 @@
               throw new Error(`Event ID ${id} not found.`);
             }
 
+            if (!this.userEmail || this.userEmail === 'unknown') {
+              console.error(`[${timestamp}] [createReg] Invalid userEmail:`, this.userEmail);
+              throw new Error("Invalid user email. Cannot create registration.");
+            }
+
+            // Ensure fresh digest
+            this.digest = await refreshDigest(this.site);
+            if (!this.digest) {
+              throw new Error("Failed to refresh digest for registration.");
+            }
+
             const response = await $.ajax({
               url: this.site + "/_api/web/lists/getbytitle('Registrations')/items",
               type: "POST",
               data: JSON.stringify({
                 '__metadata': { type: 'SP.Data.RegistrationsListItem' },
-                EventLookupId: id,
+                EventLookupIdId: id, // Fixed for SP 2016 lookup field
                 UserEmail: this.userEmail,
                 Status: status,
-                WaitlistPosition: pos,
-                Title: title,
+                WaitlistPosition: pos !== null ? pos : null,
+                Title: title || "Event Registration",
                 RegistrationDate: registrationDate
               }),
               headers: {
@@ -529,7 +539,7 @@
                 "X-RequestDigest": this.digest,
                 "Content-Type": "application/json; odata=verbose"
               },
-              timeout: 10000
+              timeout: 15000 // Increased timeout
             });
             console.log(`[${timestamp}] [createReg] Registration created successfully for Event ID ${id}:`, response);
             alert(status === 'Confirmed' ? 'Registered successfully!' : `Added to waitlist #${pos}`);
@@ -543,7 +553,7 @@
               response: xhr.responseJSON || xhr.responseText
             });
 
-            if (msg.includes("A list item with ID") && retryCount < maxRetries) {
+            if ((msg.includes("A list item with ID") || msg.includes("already exists")) && retryCount < maxRetries) {
               console.log(`[${timestamp}] [createReg] Duplicate error detected. Retrying (${retryCount + 1}/${maxRetries})...`);
               await this.loadMyRegs();
               const existingReg = await this.checkExistingRegistration(id);
@@ -556,8 +566,10 @@
               }
             } else {
               let userMsg = `Failed to register: ${msg}`;
-              if (xhr.status === 403) userMsg = "Access denied. Please check your permissions.";
-              if (xhr.status === 400) userMsg = "Invalid request. Please check list settings or Event ID.";
+              if (xhr.status === 403) userMsg = "Access denied. Please check your permissions to add items to the Registrations list.";
+              if (xhr.status === 400) userMsg = "Invalid request. Please check list settings, Event ID, or required fields.";
+              if (xhr.status === 404) userMsg = "Registrations list not found. Verify list name.";
+              if (xhr.status === 409) userMsg = "Duplicate registration detected. Please check existing registrations.";
               handleError("Create Registration", xhr, userMsg);
             }
           }
@@ -705,7 +717,7 @@
                 React.createElement("div", { className: "panel-body" },
                   React.createElement("p", null, "Time: ", new Date(ev.StartTime).toLocaleString(), " - ", new Date(ev.EndTime).toLocaleString()),
                   React.createElement("p", null, "Room: ", ev.Room || "TBD"),
-                  React.createElement("p", null, "Instructor: ", ev.Instructor?.Title || "TBD"),
+                  React.createElement("p", null, "Instructor: ", ev.Instructor?.Title || " лаз"),
                   React.createElement("p", null, "Seats: ", ev.regCount, "/", ev.MaxSeats || "Unlimited")
                 ),
                 React.createElement("div", { className: "panel-footer text-right" }, btn)
