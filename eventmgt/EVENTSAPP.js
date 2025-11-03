@@ -1,5 +1,5 @@
 // === SP 2016 ON-PREM – MODULAR EVENTS APP ===
-(function (global, React, ReactDOM, $, Survey, SurveyCreator) {
+(function (global, React, ReactDOM, $, Survey, SurveyReact, SurveyCreator, SurveyCreatorReact) {
   'use strict';
 
   // === API UTILITIES ===
@@ -9,13 +9,13 @@
       console.log(`[${timestamp}] [API getContext] Fetching context...`);
       const ctx = window._spPageContextInfo;
       if (!ctx || !ctx.webAbsoluteUrl || !ctx.userLoginName) {
-        console.error(`[${timestamp}] [API getContext] Missing context`);
+        console.error(`[${timestamp}] [API getContext] Missing context:`, ctx);
         return Promise.resolve({ error: true, message: "SharePoint context unavailable" });
       }
       return Promise.resolve({
         error: false,
         site: ctx.webAbsoluteUrl,
-        userEmail: ctx.userLoginName,
+        userEmail: ctx.userEmail || ctx.userLoginName, // Fallback to userLoginName
         digest: ctx.formDigestValue
       });
     },
@@ -23,7 +23,7 @@
     checkAdmin(site) {
       const timestamp = new Date().toISOString();
       console.log(`[${timestamp}] [API checkAdmin] Checking admin status...`);
-      const url = site + "/_api/web/sitegroups/getbyname('Event Managers')/users?$filter=Email eq '" + _spPageContextInfo.userEmail + "'";
+      const url = site + "/_api/web/sitegroups/getbyname('Event Managers')/users?$filter=Email eq '" + (window._spPageContextInfo.userEmail || window._spPageContextInfo.userLoginName) + "'";
       return $.ajax({
         url,
         headers: { Accept: "application/json; odata=verbose" },
@@ -95,13 +95,18 @@
     loadMyRegs(site, userEmail) {
       const timestamp = new Date().toISOString();
       console.log(`[${timestamp}] [API loadMyRegs] Loading for ${userEmail}`);
+      if (!userEmail) {
+        console.error(`[${timestamp}] [API loadMyRegs] No user email provided`);
+        return Promise.resolve({ error: true, message: "User email not available" });
+      }
       const q = "?$select=Id,EventLookupId,Status,WaitlistPosition,EventTitle&$filter=Registrant eq '" + userEmail + "'";
       const url = site + "/_api/web/lists/getbytitle('Registrations')/items" + q;
       return $.ajax({
         url,
         headers: { Accept: "application/json; odata=verbose" },
-        timeout: 15000
+        timeout: 30000 // Increased timeout
       }).then(d => {
+        console.log(`[${timestamp}] [API loadMyRegs] Raw response:`, d);
         const regs = (d.d?.results || []).map((r, index) => {
           console.log(`[${timestamp}] [API loadMyRegs] Registration ${index + 1}:`, { Id: r.Id, EventId: r.EventLookupId });
           return {
@@ -115,10 +120,12 @@
         console.log(`[${timestamp}] [API loadMyRegs] Loaded ${regs.length} registrations`);
         return regs;
       }).catch(xhr => {
+        console.error(`[${timestamp}] [API loadMyRegs] Error:`, xhr);
         let msg = "Failed to load registrations.";
-        if (xhr.status === 404) msg = "List 'Registrations' not found.";
-        if (xhr.status === 403) msg = "Access denied to Registrations list.";
-        return { error: true, message: msg };
+        if (xhr.status === 404) msg = "List 'Registrations' not found. Please ensure the list exists.";
+        if (xhr.status === 403) msg = "Access denied to Registrations list. Check user permissions.";
+        if (xhr.status === 0) msg = "Network error or request timeout while loading Registrations.";
+        return { error: true, message: msg, status: xhr.status };
       });
     },
 
@@ -488,10 +495,11 @@
       const timestamp = new Date().toISOString();
       const [survey, setSurvey] = React.useState(null);
       const [isDesigner, setIsDesigner] = React.useState(true);
-      const surveyElementRef = React.useRef(null);
+      const [creator, setCreator] = React.useState(null);
 
       React.useEffect(() => {
         if (showModal && events.length > 0) {
+          console.log(`[${timestamp}] [SurveyModal] Initializing survey for ${events.length} events`);
           const eventTitles = events.map(e => e.Title);
           const surveyJson = {
             title: "Event Feedback Survey",
@@ -506,8 +514,7 @@
                   rateMin: 1,
                   rateMax: 5,
                   minRateDescription: "Poor",
-                  maxRateDescription: "Excellent",
-                  renderAs: "stars"
+                  maxRateDescription: "Excellent"
                 })),
                 {
                   type: "textarea",
@@ -520,8 +527,10 @@
               ]
             }]
           };
+
           const newSurvey = new Survey.Model(surveyJson);
           newSurvey.onComplete.add((sender) => {
+            console.log(`[${timestamp}] [SurveyModal] Survey completed:`, sender.data);
             const responseData = { ...sender.data, eventTitles };
             api.saveSurveyResponse(site, digest, responseData).then(result => {
               alert(result.message);
@@ -529,19 +538,17 @@
             });
           });
           setSurvey(newSurvey);
-        }
-      }, [showModal, events, site, digest]);
 
-      React.useEffect(() => {
-        if (survey && surveyElementRef.current) {
-          if (isDesigner) {
-            const creator = new SurveyCreator.SurveyCreator({ survey });
-            creator.render(surveyElementRef.current);
-          } else {
-            survey.render(surveyElementRef.current);
+          if (isDesigner && typeof SurveyCreator !== 'undefined') {
+            const newCreator = new SurveyCreator.SurveyCreator({
+              showLogicTab: true,
+              showTranslationTab: true
+            });
+            newCreator.JSON = surveyJson;
+            setCreator(newCreator);
           }
         }
-      }, [survey, isDesigner]);
+      }, [showModal, events, site, digest, isDesigner]);
 
       if (!showModal || !survey) return null;
 
@@ -564,11 +571,10 @@
                 React.createElement("button", { className: "close", onClick: () => setShowModal(false) }, "×")
               ),
               React.createElement("div", { className: "modal-body" },
-                React.createElement("div", {
-                  ref: surveyElementRef,
-                  style: { height: "500px", margin: "10px 0" }
-                }),
-                React.createElement("div", null,
+                isDesigner && creator
+                  ? React.createElement(SurveyCreatorReact.SurveyCreatorComponent, { creator })
+                  : React.createElement(SurveyReact.Survey, { model: survey }),
+                React.createElement("div", { className: "mt-2" },
                   React.createElement("button", {
                     className: "btn btn-secondary mr-2",
                     onClick: () => setIsDesigner(!isDesigner)
@@ -610,14 +616,14 @@
           React.createElement("a", {
             href: surveyId ? `SurveyFiller.aspx?surveyId=${surveyId}` : '#',
             target: "_blank",
-            className: `btn btn-info btn-block mb-2 ${surveyId ? '' : 'disabled'}`,
+            className: `btn btn-info btn-block mb-2 ${surveyId ? '' : 'disabled'}`
           }, "Form Filler")
         ),
         React.createElement("li", null,
           React.createElement("a", {
             href: surveyId ? `SurveyResponses.aspx?surveyId=${surveyId}` : '#',
             target: "_blank",
-            className: `btn btn-secondary btn-block mb-2 ${surveyId ? '' : 'disabled'}`,
+            className: `btn btn-secondary btn-block mb-2 ${surveyId ? '' : 'disabled'}`
           }, "Response Page")
         )
       );
@@ -641,11 +647,13 @@
         React: typeof React !== "undefined" ? `Loaded ${React.version}` : "Not loaded",
         ReactDOM: typeof ReactDOM !== "undefined" ? "Loaded" : "Not loaded",
         render: typeof ReactDOM.render === "function" ? "Available" : "Not available",
-        Survey: typeof Survey !== "undefined" ? "Loaded" : "Not loaded",
-        SurveyCreator: typeof SurveyCreator !== "undefined" ? "Loaded" : "Not loaded"
+        Survey: typeof Survey !== "undefined" ? "Loaded" : "Not loaded. Ensure survey-core is included.",
+        SurveyReact: typeof SurveyReact !== "undefined" ? "Loaded" : "Not loaded. Ensure survey-react-ui is included.",
+        SurveyCreator: typeof SurveyCreator !== "undefined" ? "Loaded" : "Not loaded. Ensure survey-creator-core is included.",
+        SurveyCreatorReact: typeof SurveyCreatorReact !== "undefined" ? "Loaded" : "Not loaded. Ensure survey-creator-react is included."
       };
       console.log(`[${timestamp}] [validateDependencies] Check:`, checks);
-      if (Object.values(checks).includes("Not loaded") || checks.render !== "Available") {
+      if (Object.values(checks).some(v => v.includes("Not loaded")) || checks.render !== "Available") {
         throw new Error("Dependencies missing: " + JSON.stringify(checks));
       }
       if (React.version !== "17.0.2") {
@@ -749,7 +757,7 @@
               loadData();
               $('#searchBox').on('input', handleSearch);
               return () => $('#searchBox').off('input', handleSearch);
-            }, [events]); // Include events in dependencies to update AdminLinks
+            }, [events]);
 
             React.useEffect(() => {
               const timestamp = new Date().toISOString();
@@ -945,4 +953,4 @@
 
   // Start App
   app.init();
-})(window, window.React, window.ReactDOM, window.jQuery, window.Survey, window.SurveyCreator);
+})(window, window.React, window.ReactDOM, window.jQuery, window.Survey, window.SurveyReact, window.SurveyCreator, window.SurveyCreatorReact);
