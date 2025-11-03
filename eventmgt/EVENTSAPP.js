@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED LOADMYREGS HALT + UNREGISTER + REGISTRATION ===
+// === SP 2016 ON-PREM – FIXED LOADMYREGS FAILURE + REGISTRATION ===
 (function () {
   'use strict';
 
@@ -161,6 +161,7 @@
           $.ajax({
             url: this.site + "/_api/web/currentuser/groups?$filter=Title eq 'Event Managers'",
             headers: { Accept: "application/json; odata=verbose" },
+            timeout: 5000,
             success: d => {
               try {
                 const isAdmin = d.d?.results?.length > 0;
@@ -274,16 +275,17 @@
           console.log(`[${timestamp}] [loadMyRegs] Loading user registrations for:`, this.userEmail);
 
           return new Promise((resolve, reject) => {
-            const query = this.site + "/_api/web/lists/getbytitle('Registrations')/items" +
-                          "?$filter=UserEmail eq '" + encodeURIComponent(this.userEmail) + "'" +
-                          "&$select=Id,EventLookupId,Status,WaitlistPosition,Title,RegistrationDate,EventLookupId/Id" +
-                          "&$expand=EventLookupId";
+            // Simplified query for SP 2016 compatibility
+            const query = `${this.site}/_api/web/lists/getbytitle('Registrations')/items` +
+                          `?$filter=UserEmail eq '${encodeURIComponent(this.userEmail)}'` +
+                          `&$select=Id,EventLookupId,Status,WaitlistPosition,Title,RegistrationDate,EventLookupId/Id` +
+                          `&$expand=EventLookupId`;
             console.log(`[${timestamp}] [loadMyRegs] Query URL:`, query);
 
             $.ajax({
               url: query,
               headers: { Accept: "application/json; odata=verbose" },
-              timeout: 15000, // Increased timeout
+              timeout: 20000, // Increased timeout for slow servers
               success: d => {
                 try {
                   const registrations = (d.d?.results || []).map(r => {
@@ -303,14 +305,14 @@
                   console.log(`[${timestamp}] [loadMyRegs] My registrations loaded:`, registrations.length, registrations);
                   this.setState({ myRegs: registrations }, () => {
                     this.renderCards();
-                    resolve(true);
+                    resolve(registrations); // Return registrations for consistency
                   });
                 } catch (e) {
                   console.error(`[${timestamp}] [loadMyRegs] Error parsing registrations:`, e);
                   handleError("Parse Registrations", e, "Failed to parse user registrations.");
                   this.setState({ myRegs: [] }, () => {
                     this.renderCards();
-                    resolve(false);
+                    resolve([]); // Resolve with empty array on error
                   });
                 }
               },
@@ -322,12 +324,13 @@
                   error
                 });
                 let userMsg = "Failed to load your registrations. Please check permissions or list settings.";
-                if (xhr.status === 403) userMsg = "Access denied to Registrations list.";
-                if (xhr.status === 404) userMsg = "Registrations list not found.";
+                if (xhr.status === 403) userMsg = "Access denied to Registrations list. Contact your administrator.";
+                if (xhr.status === 404) userMsg = "Registrations list not found. Verify list name.";
+                if (xhr.status === 400) userMsg = "Invalid query. Check UserEmail or EventLookupId.";
                 handleError("Load My Registrations", xhr, userMsg);
                 this.setState({ myRegs: [] }, () => {
                   this.renderCards();
-                  resolve(false); // Always resolve to prevent hang
+                  resolve([]); // Always resolve to prevent hang
                 });
               }
             });
@@ -414,13 +417,13 @@
             console.log(`[${timestamp}] [register] Event validated:`, ev.Title);
 
             console.log(`[${timestamp}] [register] Before loadMyRegs...`);
-            await this.loadMyRegs().catch(err => {
+            const myRegs = await this.loadMyRegs().catch(err => {
               console.error(`[${timestamp}] [register] loadMyRegs failed:`, err);
-              throw new Error("Failed to load registrations.");
+              throw new Error("Failed to load registrations. Please try again.");
             });
-            console.log(`[${timestamp}] [register] After loadMyRegs`);
+            console.log(`[${timestamp}] [register] After loadMyRegs, registrations:`, myRegs.length);
 
-            const localReg = this.state.myRegs.find(r => r.EventLookupId === ev.Id);
+            const localReg = myRegs.find(r => r.EventLookupId === ev.Id);
             if (localReg) {
               console.log(`[${timestamp}] [register] Found in local state for Event ID ${id}:`, localReg);
               alert("You are already " + (localReg.Status === 'Confirmed' ? "registered" : `waitlisted (#${localReg.WaitlistPosition})`));
@@ -442,9 +445,7 @@
             const full = ev.MaxSeats && count >= ev.MaxSeats;
             console.log(`[${timestamp}] [register] Event ID ${id} - Seats: ${count}/${ev.MaxSeats || 'Unlimited'}, Full: ${full}`);
 
-            console.log(`[${timestamp}] [register
-
-] Refreshing digest before registration...`);
+            console.log(`[${timestamp}] [register] Refreshing digest before registration...`);
             this.digest = await refreshDigest(this.site);
             if (!this.digest) {
               throw new Error("Failed to refresh digest for registration.");
