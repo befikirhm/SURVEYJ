@@ -1,4 +1,4 @@
-// === SP 2016 ON-PREM – FIXED CONSOLE ERROR, LOADING, AND CANREG ===
+// === SP 2016 ON-PREM – FIXED CANREG FALSE AND CARDS CLOSED ===
 (function () {
   'use strict';
 
@@ -293,8 +293,8 @@
                       Room: ev.Location || "TBD",
                       Instructor: ev.Instructor || "TBD",
                       MaxSeats: ev.MaxSeats || null,
-                      AllowRegistration: ev.AllowRegistration === true || ev.AllowRegistration === "1" || ev.AllowRegistration === 1,
-                      IsOver: ev.IsOver === true || ev.IsOver === "1" || ev.IsOver === 1,
+                      AllowRegistration: !!ev.AllowRegistration, // Handle Yes/No field (true/false)
+                      IsOver: !!ev.IsOver,
                       Attachments: ev.Attachments || false,
                       regCount: 0
                     };
@@ -305,6 +305,7 @@
                   if (evs.length === 0) {
                     console.log(`[${timestamp}] [loadEvents] No events found in response`);
                     setEvents([]);
+                    setLoading(false);
                     resolve([]);
                     return;
                   }
@@ -318,13 +319,14 @@
                     .catch(err => {
                       console.warn(`[${timestamp}] [loadEvents] Error processing reg counts:`, err);
                       setEvents([...evs.map(e => ({ ...e, regCount: 0 }))]);
+                      setLoading(false);
                       resolve(evs);
                     });
                 } catch (err) {
                   console.error(`[${timestamp}] [loadEvents] Error parsing events:`, err);
                   handleError("Parse Events", err, "Failed to parse events data. Check list columns or response format.");
                   setEvents([]);
-                  setLoading(false); // Ensure loading stops
+                  setLoading(false);
                   resolve([]);
                 }
               },
@@ -340,7 +342,7 @@
                 if (xhr.status === 400) msg = "Invalid query. Check column names in Events list.";
                 handleError("Load Events", xhr, msg);
                 setEvents([]);
-                setLoading(false); // Ensure loading stops
+                setLoading(false);
                 resolve([]);
               }
             });
@@ -356,7 +358,7 @@
               console.error(`[${timestamp}] [loadMyRegs] Invalid userEmail:`, userEmailRef.current);
               handleError("Load My Registrations", new Error("Invalid user email"), "Cannot load registrations due to invalid user email.");
               setMyRegs([]);
-              setLoading(false); // Ensure loading stops
+              setLoading(false);
               resolve([]);
               return;
             }
@@ -395,7 +397,7 @@
                   console.error(`[${timestamp}] [loadMyRegs] Error parsing registrations:`, e);
                   handleError("Parse Registrations", e, "Failed to parse user registrations.");
                   setMyRegs([]);
-                  setLoading(false); // Ensure loading stops
+                  setLoading(false);
                   resolve([]);
                 }
               },
@@ -412,7 +414,7 @@
                 if (xhr.status === 400) userMsg = "Invalid query. Check UserEmail or EventLookupId configuration.";
                 handleError("Load My Registrations", xhr, userMsg);
                 setMyRegs([]);
-                setLoading(false); // Ensure loading stops
+                setLoading(false);
                 resolve([]);
               }
             });
@@ -857,7 +859,7 @@
             const endDate = new Date(ev.EndTime);
             const now = new Date();
             const isPast = endDate.getTime() < now.getTime();
-            const canReg = ev.AllowRegistration && !isPast;
+            const canReg = ev.AllowRegistration && !isPast && !ev.IsOver;
 
             console.log(`[${timestamp}] [renderCards] Event ID ${ev.Id}:`, {
               title: ev.Title,
@@ -870,10 +872,11 @@
               endTime: ev.EndTime,
               parsedEnd: endDate.toISOString(),
               now: now.toISOString(),
-              allowRegistration: ev.AllowRegistration
+              allowRegistration: ev.AllowRegistration,
+              isOver: ev.IsOver
             });
 
-            const panelCls = isFull || isPast ? "panel panel-default card-full" + (isPast ? " card-past" : "") : "panel panel-primary";
+            const panelCls = isFull || isPast || ev.IsOver ? "panel panel-default card-full" + (isPast ? " card-past" : "") : "panel panel-primary";
 
             let btn;
             if (!canReg) {
