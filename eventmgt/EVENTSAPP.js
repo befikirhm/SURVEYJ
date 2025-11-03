@@ -158,17 +158,23 @@
           const timestamp = new Date().toISOString();
           console.log(`[${timestamp}] [EventCards] Rendering ${events.length} events, search:`, search, "events:", events);
 
-          const filtered = events.filter(e =>
+          // Validate events
+          const validEvents = events.filter(e => {
+            const isValid = e && Number.isInteger(e.Id) && e.Title && e.StartTime && e.EndTime;
+            if (!isValid) {
+              console.warn(`[${timestamp}] [EventCards] Invalid event data:`, e);
+            }
+            return isValid;
+          });
+          console.log(`[${timestamp}] [EventCards] Valid events:`, validEvents.length, validEvents);
+
+          const filtered = validEvents.filter(e =>
             (e.Title || "").toLowerCase().includes(search) ||
             (e.Room || "").toLowerCase().includes(search)
           );
           console.log(`[${timestamp}] [EventCards] Filtered events:`, filtered.length, filtered);
 
           const cards = filtered.length ? filtered.map(ev => {
-            if (!ev.Id || !ev.Title) {
-              console.warn(`[${timestamp}] [EventCards] Invalid event data:`, ev);
-              return null;
-            }
             const myReg = myRegs.find(r => r.EventLookupId === ev.Id);
             const isFull = ev.MaxSeats && ev.regCount >= ev.MaxSeats;
             const endDate = new Date(ev.EndTime);
@@ -216,7 +222,7 @@
                 React.createElement("div", { className: "panel-footer text-right" }, btn)
               )
             );
-          }).filter(card => card !== null) : [React.createElement("div", { key: "no", className: "alert alert-info text-center" }, "No events found. Please check Events list or permissions.")];
+          }) : [React.createElement("div", { key: "no", className: "alert alert-info text-center" }, "No valid events found. Please check Events list or permissions.")];
 
           return React.createElement("div", { className: "row" }, cards);
         };
@@ -284,7 +290,7 @@
           // Force render after state update
           setTimeout(() => {
             renderApp();
-          }, 0);
+          }, 100); // Increased delay to ensure state propagation
         }, [loading]);
 
         // useEffect for componentDidMount
@@ -978,7 +984,9 @@
             return;
           }
 
-          console.log(`[${timestamp}] [renderApp] Root element status:`, { exists: !!root, innerHTML: root.innerHTML.substring(0, 100) + "..." });
+          // Clear root to prevent DOM conflicts
+          root.innerHTML = '';
+          console.log(`[${timestamp}] [renderApp] Root cleared, status:`, { exists: !!root, innerHTML: root.innerHTML });
 
           $("#loading").hide();
 
@@ -1005,7 +1013,7 @@
 
             ReactDOM.render(
               React.createElement(ErrorBoundary, null,
-                React.createElement("div", null,
+                React.createElement("div", { className: "event-container" },
                   React.createElement(EventCards, {
                     events,
                     myRegs,
@@ -1025,6 +1033,10 @@
               modal: !!document.querySelector(".modal"),
               backdrop: !!document.querySelector(".modal-backdrop")
             });
+            // Force DOM repaint
+            root.style.display = 'none';
+            root.offsetHeight; // Trigger reflow
+            root.style.display = 'block';
           } catch (e) {
             console.error(`[${timestamp}] [renderApp] ReactDOM.render failed:`, e);
             handleError("Render App", e, "Failed to render event cards or modal. Check React version or DOM setup.");
