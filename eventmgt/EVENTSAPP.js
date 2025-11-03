@@ -795,6 +795,6 @@
     }
   };
 
-  // Start App
+  // Start App 
   app.init();
 })(window, window.React, window.ReactDOM, window.jQuery);
