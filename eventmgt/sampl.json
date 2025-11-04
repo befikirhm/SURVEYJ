@@ -1,0 +1,20 @@
+{
+  "pages": [
+    {
+      "name": "page1",
+      "elements": [
+        {
+          "type": "text",
+          "name": "name",
+          "title": "Your name:"
+        },
+        {
+          "type": "radiogroup",
+          "name": "satisfaction",
+          "title": "How satisfied are you?",
+          "choices": ["1", "2", "3", "4", "5"]
+        }
+      ]
+    }
+  ]
+}
