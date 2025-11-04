@@ -1,0 +1,55 @@
+@{
+    ViewData["Title"] = "SurveyJS App";
+}
+
+<div class="container">
+    <h2>Select a Survey</h2>
+    <div id="surveyList" class="mb-3"></div>
+    <div id="surveyContainer"></div>
+</div>
+
+<!-- SurveyJS CDN -->
+<link href="https://unpkg.com/survey-core@1.10.0/modern.min.css" rel="stylesheet" />
+<script src="https://unpkg.com/survey-jquery@1.10.0/survey.jquery.min.js"></script>
+
+<script>
+    $(document).ready(function () {
+        loadSurveys();
+    });
+
+    function loadSurveys() {
+        fetch('/api/surveys')
+            .then(r => r.json())
+            .then(surveys => {
+                const html = surveys.map(s =>
+                    `<button class="btn btn-primary me-2 mb-2" onclick="loadSurvey(${s.id})">${s.title}</button>`
+                ).join('');
+                $('#surveyList').html(html);
+            });
+    }
+
+    function loadSurvey(id) {
+        fetch(`/api/surveys/${id}`)
+            .then(r => r.json())
+            .then(data => {
+                $('#surveyContainer').html('<div id="surveyElement"></div>');
+                var survey = new Survey.SurveyModel(JSON.parse(data.jsonData));
+                $("#surveyElement").Survey({ model: survey });
+
+                survey.onComplete.add(function (sender) {
+                    fetch(`/api/responses/${id}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            answersJson: JSON.stringify(sender.data),
+                            userAgent: navigator.userAgent,
+                            ipAddress: '127.0.0.1' // Replace with real IP
+                        })
+                    }).then(() => {
+                        alert('Thank you for completing the survey!');
+                        loadSurveys(); // Reload list
+                    });
+                });
+            });
+    }
+</script>
