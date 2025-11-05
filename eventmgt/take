@@ -1,0 +1,56 @@
+@{
+    ViewData["Title"] = "Take Survey";
+    int surveyId = (int)ViewData["SurveyId"]!;
+}
+
+<div class="container">
+    <h2>Taking Survey</h2>
+    <div id="surveyContainer"></div>
+    <a href="@Url.Action("AllSurveys", "Home")" class="btn btn-secondary mt-3">Back to All Surveys</a>
+</div>
+
+<!-- SurveyJS CDN -->
+<link href="https://unpkg.com/survey-core@1.10.0/modern.min.css" rel="stylesheet" />
+<script src="https://unpkg.com/survey-jquery@1.10.0/survey.jquery.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<script>
+    $(document).ready(function () {
+        loadSurvey(@surveyId);
+    });
+
+    function loadSurvey(id) {
+        const basePath = '@Url.Content("~/")';
+        fetch(`${basePath}api/surveys/${id}`)
+            .then(r => r.json())
+            .then(data => {
+                $('#surveyContainer').html('<div id="surveyElement"></div>');
+                var survey = new Survey.SurveyModel(JSON.parse(data.jsonData));
+                $("#surveyElement").Survey({ model: survey });
+
+                survey.onComplete.add(function (sender) {
+                    fetch(`${basePath}api/responses/${id}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            answersJson: JSON.stringify(sender.data),
+                            userAgent: navigator.userAgent,
+                            ipAddress: '127.0.0.1',
+                            isComplete: true
+                        })
+                    }).then(response => {
+                        if (response.ok) {
+                            alert('Thank you for completing the survey!');
+                            window.location.href = '@Url.Action("AllSurveys", "Home")';
+                        } else {
+                            alert('Error submitting survey');
+                        }
+                    }).catch(() => alert('Network error'));
+                });
+            })
+            .catch(error => {
+                console.error('Error loading survey:', error);
+                $('#surveyContainer').html('<p class="text-danger">Failed to load survey.</p>');
+            });
+    }
+</script>
