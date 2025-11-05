@@ -1,0 +1,38 @@
+@{
+    ViewData["Title"] = "All Surveys";
+}
+
+<div class="container">
+    <h2>All Surveys</h2>
+    <p>Click a survey to take it.</p>
+    <ul id="surveyList" class="list-group mb-3"></ul>
+    <a href="@Url.Action("Index", "Home")" class="btn btn-secondary">Back to Home</a>
+</div>
+
+<!-- Bootstrap (included in ASP.NET Core MVC template) -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<script>
+    $(document).ready(function () {
+        loadSurveys();
+    });
+
+    function loadSurveys() {
+        const basePath = '@Url.Content("~/")'; // Handles IIS subfolder (e.g., /SurveyJsApp)
+        fetch(`${basePath}api/surveys`)
+            .then(r => r.json())
+            .then(surveys => {
+                const html = surveys.map(s =>
+                    `<li class="list-group-item">
+                        <a href="@Url.Action("TakeSurvey", "Home")/${s.id}" class="text-decoration-none">${s.title}</a>
+                    </li>`
+                ).join('');
+                $('#surveyList').html(html);
+            })
+            .catch(error => {
+                console.error('Error fetching surveys:', error);
+                $('#surveyList').html('<li class="list-group-item text-danger">Failed to load surveys.</li>');
+            });
+    }
+</script>
