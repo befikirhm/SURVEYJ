@@ -1,0 +1,92 @@
+@{
+    ViewData["Title"] = "Create Survey";
+}
+
+<div class="container">
+    <h2>Create or Edit Survey</h2>
+    <div id="surveyCreatorContainer"></div>
+    <div id="errorMessage" class="text-danger" style="display:none;"></div>
+    <div class="mt-3">
+        <button id="saveSurvey" class="btn btn-primary">Save Survey</button>
+        <a href="@Url.Action("AllSurveys", "Home")" class="btn btn-secondary">Back to All Surveys</a>
+    </div>
+</div>
+
+<!-- Bootstrap -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous" />
+
+<!-- SurveyJS Creator and Dependencies -->
+<script src="https://unpkg.com/knockout@3.5.1/build/output/knockout-latest.js"></script>
+<script src="https://unpkg.com/survey-core@1.12.44/survey.core.min.js"></script>
+<script src="https://unpkg.com/survey-creator-core@1.12.44/survey-creator-core.min.js"></script>
+<link href="https://unpkg.com/survey-creator-core@1.12.44/survey-creator-core.min.css" rel="stylesheet" />
+
+<!-- jQuery for AJAX -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+
+<script>
+    $(document).ready(function () {
+        if (typeof SurveyCreator === 'undefined') {
+            $('#surveyCreatorContainer').html('');
+            $('#errorMessage').text('Error: SurveyJS Creator library failed to load.').show();
+            console.error('SurveyCreator not defined.');
+            return;
+        }
+
+        // Initialize Survey Creator
+        const creatorOptions = {
+            showLogicTab: true, // Enable logic tab
+            showJSONEditorTab: true, // Enable JSON editor
+            showPreviewTab: true // Enable preview
+        };
+        const creator = new SurveyCreator.SurveyCreator("surveyCreatorContainer", creatorOptions);
+
+        // Save button handler
+        $('#saveSurvey').click(function () {
+            const surveyJson = creator.JSON;
+            if (!surveyJson || !surveyJson.pages || surveyJson.pages.length === 0) {
+                $('#errorMessage').text('Survey is empty. Add at least one question.').show();
+                return;
+            }
+
+            const title = prompt('Enter survey title:', 'New Survey');
+            if (!title) {
+                $('#errorMessage').text('Survey title is required.').show();
+                return;
+            }
+
+            const basePath = '@Url.Content("~/")'.replace(/\/$/, '');
+            const payload = {
+                title: title,
+                jsonData: JSON.stringify(surveyJson)
+            };
+            console.log('Saving survey:', payload);
+
+            fetch(`${basePath}/api/surveys`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(response => {
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    return response.json().then(data => ({ ok: response.ok, data }));
+                }
+                return { ok: response.ok, data: {} };
+            })
+            .then(({ ok, data }) => {
+                if (ok) {
+                    alert('Survey saved successfully!');
+                    window.location.href = '@Url.Action("AllSurveys", "Home")';
+                } else {
+                    $('#errorMessage').text(`Error saving survey: ${data.message || 'Bad Request'}`).show();
+                    console.error('Server error:', data);
+                }
+            })
+            .catch(error => {
+                $('#errorMessage').text('Network error saving survey.').show();
+                console.error('Fetch error:', error);
+            });
+        });
+    });
+</script>
