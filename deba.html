@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Custom SharePoint Form</title>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <!-- SharePoint JSOM -->
+    <script src="/_layouts/15/sp.js"></script>
+
+    <style>
+        .form-container { max-width: 600px; margin: 20px auto; }
+        .thank-you { display: none; text-align: center; margin-top: 20px; }
+        .error-message { color: red; display: none; }
+    </style>
+</head>
+<body>
+    <div class="container form-container">
+        <!-- Form -->
+        <form id="submissionForm" class="border p-4">
+            <h3 id="formTitle">New Submission</h3>
+            <div class="form-group">
+                <label for="FirstName">First Name</label>
+                <input type="text" class="form-control" id="FirstName" required>
+            </div>
+            <div class="form-group">
+                <label for="LastName">Last Name</label>
+                <input type="text" class="form-control" id="LastName" required>
+            </div>
+            <div class="form-group">
+                <label for="Department">Department</label>
+                <input type="text" class="form-control" id="Department" required>
+            </div>
+            <div class="form-group">
+                <label for="EmailAddress">Email Address</label>
+                <input type="email" class="form-control" id="EmailAddress" required>
+                <small class="error-message" id="emailError">Please enter a valid email</small>
+            </div>
+            <button type="submit" class="btn btn-primary" id="submitButton">Submit</button>
+            <button type="button" class="btn btn-secondary" id="cancelButton">Cancel</button>
+        </form>
+
+        <!-- Thank You Message -->
+        <div class="alert alert-success thank-you" id="thankYouMessage">
+            Thank you for your submission! Redirecting to your submission...
+        </div>
+
+        <!-- View Mode Content -->
+        <div id="viewMode" class="border p-4" style="display: none;">
+            <h3>Submission Details</h3>
+            <p><strong>First Name:</strong> <span id="viewFirstName"></span></p>
+            <p><strong>Last Name:</strong> <span id="viewLastName"></span></p>
+            <p><strong>Department:</strong> <span id="viewDepartment"></span></p>
+            <p><strong>Email Address:</strong> <span id="viewEmailAddress"></span></p>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            // SharePoint Context
+            var context = SP.ClientContext.get_current();
+            var web = context.get_web();
+            var currentUser = null;
+            var list = web.get_lists().getByTitle("UserSubmissions");
+            var itemId = new URLSearchParams(window.location.search).get("ID");
+            var mode = window.location.pathname.includes("NewForm.aspx") ? "new" :
+                       window.location.pathname.includes("EditForm.aspx") ? "edit" :
+                       window.location.pathname.includes("DispForm.aspx") ? "view" : "new";
+
+            // Get current user
+            context.load(web, 'CurrentUser');
+            context.executeQueryAsync(function() {
+                currentUser = web.get_currentUser();
+                $("#EmailAddress").val(currentUser.get_email()); // Pre-fill email in New/Edit
+                if (mode === "view" || mode === "edit") {
+                    loadItem();
+                }
+            }, function() {
+                alert("Error loading user information.");
+            });
+
+            // Form Title and Behavior
+            if (mode === "new") {
+                $("#formTitle").text("New Submission");
+                $("#viewMode").hide();
+            } else if (mode === "edit") {
+                $("#formTitle").text("Edit Submission");
+                $("#viewMode").hide();
+            } else if (mode === "view") {
+                $("#submissionForm").hide();
+                $("#viewMode").show();
+            }
+
+            // Email Validation
+            $("#EmailAddress").on("input", function() {
+                var email = $(this).val();
+                var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email)) {
+                    $("#emailError").show();
+                    $("#submitButton").prop("disabled", true);
+                } else {
+                    $("#emailError").hide();
+                    $("#submitButton").prop("disabled", false);
+                }
+            });
+
+            // Form Submission
+            $("#submissionForm").on("submit", function(e) {
+                e.preventDefault();
+                var firstName = $("#FirstName").val();
+                var lastName = $("#LastName").val();
+                var department = $("#Department").val();
+                var emailAddress = $("#EmailAddress").val();
+
+                if (mode === "new") {
+                    createItem(firstName, lastName, department, emailAddress);
+                } else if (mode === "edit") {
+                    updateItem(firstName, lastName, department, emailAddress);
+                }
+            });
+
+            // Cancel Button
+            $("#cancelButton").on("click", function() {
+                window.location.href = "/Lists/UserSubmissions/AllItems.aspx"; // Redirect to list view
+            });
+
+            // Load Item for View/Edit
+            function loadItem() {
+                var listItem = list.getItemById(itemId);
+                context.load(listItem);
+                context.executeQueryAsync(function() {
+                    var itemEmail = listItem.get_item("EmailAddress");
+                    if (itemEmail !== currentUser.get_email()) {
+                        alert("You can only view/edit your own submissions.");
+                        window.location.href = "/Lists/UserSubmissions/AllItems.aspx";
+                        return;
+                    }
+                    $("#FirstName").val(listItem.get_item("FirstName"));
+                    $("#LastName").val(listItem.get_item("LastName"));
+                    $("#Department").val(listItem.get_item("Department"));
+                    $("#EmailAddress").val(itemEmail);
+                    $("#viewFirstName").text(listItem.get_item("FirstName"));
+                    $("#viewLastName").text(listItem.get_item("LastName"));
+                    $("#viewDepartment").text(listItem.get_item("Department"));
+                    $("#viewEmailAddress").text(itemEmail);
+                    if (mode === "view") {
+                        $("#submissionForm input").prop("disabled", true);
+                        $("#submitButton, #cancelButton").hide();
+                    }
+                }, function() {
+                    alert("Error loading item.");
+                });
+            }
+
+            // Create New Item
+            function createItem(firstName, lastName, department, emailAddress) {
+                var itemCreateInfo = new SP.ListItemCreationInformation();
+                var listItem = list.addItem(itemCreateInfo);
+                listItem.set_item("Title", firstName + " " + lastName); // Optional
+                listItem.set_item("FirstName", firstName);
+                listItem.set_item("LastName", lastName);
+                listItem.set_item("Department", department);
+                listItem.set_item("EmailAddress", emailAddress);
+                listItem.update();
+
+                context.load(listItem);
+                context.executeQueryAsync(function() {
+                    var newItemId = listItem.get_id();
+                    $("#submissionForm").hide();
+                    $("#thankYouMessage").show();
+                    setTimeout(function() {
+                        window.location.href = `/Lists/UserSubmissions/DispForm.aspx?ID=${newItemId}`;
+                    }, 2000); // 2-second thank-you delay
+                }, function() {
+                    alert("Error submitting form.");
+                });
+            }
+
+            // Update Existing Item
+            function updateItem(firstName, lastName, department, emailAddress) {
+                var listItem = list.getItemById(itemId);
+                listItem.set_item("FirstName", firstName);
+                listItem.set_item("LastName", lastName);
+                listItem.set_item("Department", department);
+                listItem.set_item("EmailAddress", emailAddress);
+                listItem.update();
+
+                context.executeQueryAsync(function() {
+                    $("#submissionForm").hide();
+                    $("#thankYouMessage").show();
+                    setTimeout(function() {
+                        window.location.href = `/Lists/UserSubmissions/DispForm.aspx?ID=${itemId}`;
+                    }, 2000);
+                }, function() {
+                    alert("Error updating item.");
+                });
+            }
+        });
+    </script>
+</body>
+</html>
