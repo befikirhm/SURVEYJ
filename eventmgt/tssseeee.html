@@ -2,150 +2,81 @@
 
 <script>
 (function ($) {
-    // Safe $ in case SharePoint uses other libs
     var DEBUG = true;
 
     function log() {
-        if (!DEBUG) return;
-        console.log.apply(console, arguments);
+        if (DEBUG) console.log.apply(console, arguments);
     }
 
-    // returns normalized url or null
     function extractUrl($a) {
         var href = $a.attr('href') || '';
         var propHref = $a.prop('href') || '';
         var onclick = $a.attr('onclick') || '';
-        var dataHref = $a.data('href') || $a.attr('data-href') || '';
 
-        // 1) prefer explicit href if it ends with a filename
-        if (href && href.toLowerCase().indexOf('.dotx') > -1) return normalizeUrl(href);
+        // Direct href
+        if (href.toLowerCase().endsWith('.dotx')) return href;
 
-        // 2) prop('href') often returns the absolute url
-        if (propHref && propHref.toLowerCase().indexOf('.dotx') > -1) return normalizeUrl(propHref);
+        // Absolute URL via prop()
+        if (propHref.toLowerCase().endsWith('.dotx')) return propHref;
 
-        // 3) sometimes the url is in data attributes
-        if (dataHref && dataHref.toLowerCase().indexOf('.dotx') > -1) return normalizeUrl(dataHref);
-
-        // 4) the onclick may contain a url - try to extract quoted URL inside it
-        // e.g. onclick="OpenPopUpPage('/sites/.../CaseTemplate.dotx', ...)"
-        var match = onclick.match(/['"]([^'"]+\.dotx[^'"]*)['"]/i);
-        if (match && match[1]) return normalizeUrl(match[1]);
-
-        // 5) fallback: try to read the text of the link and see if it contains a server relative path
-        // Not ideal, but helps in weird renderings.
-        var text = $a.text() || '';
-        var txtMatch = text.match(/\/[^\/\s]*\.dotx/i);
-        if (txtMatch) return normalizeUrl(txtMatch[0]);
+        // Look inside onclick if SharePoint wrapped it
+        var m = onclick.match(/['"]([^'"]+\.dotx[^'"]*)['"]/i);
+        if (m) return m[1];
 
         return null;
     }
 
-    // ensure full absolute URL for ms-word. Accepts relative urls too.
-    function normalizeUrl(url) {
+    function normalize(url) {
         if (!url) return null;
-        // If it's already prefixed with ms-word, return as is (avoid double)
-        if (url.indexOf('ms-word:') === 0) return url;
+        if (url.indexOf('/') === 0) return window.location.origin + url;
 
-        // Remove any JS wrapper like "javascript:..." and get the raw path
-        url = url.replace(/^javascript:\s*/i, '');
-
-        // If url is server-relative (starts with /), build absolute using origin
-        if (url.indexOf('/') === 0) {
-            return window.location.origin + url;
-        }
-
-        // If it's relative (no protocol), try to resolve using <a> element trick
         var a = document.createElement('a');
         a.href = url;
         return a.href;
     }
 
-    function processLinks(root) {
-        root = root || document;
-        var $links = $(root).find("a"); // broad scan; we'll filter
-        var found = 0, rewritten = 0;
+    function rewriteLinks(context) {
+        log("Scanning for DOTX links...");
 
-        $links.each(function () {
+        $(context).find("a").each(function () {
             var $a = $(this);
-            var originalHref = $a.attr('href') || '';
-            var resolvedHref = $a.prop('href') || '';
-            var candidate = extractUrl($a);
+            var url = extractUrl($a);
 
-            if (candidate && candidate.toLowerCase().indexOf('.dotx') > -1) {
-                found++;
-                log("DOTX candidate found:", {
-                    text: $a.text().trim(),
-                    attrHref: originalHref,
-                    propHref: resolvedHref,
-                    extracted: candidate,
-                    onclick: $a.attr('onclick')
-                });
+            if (!url) return;
 
-                // Build ms-word link (use ofe|u| which is widely used)
-                var msLink = "ms-word:ofe|u|" + candidate;
+            url = normalize(url);
 
-                // Do not double-rewrite
-                var currentHref = ($a.attr('href') || '').toString();
-                if (currentHref.indexOf('ms-word:') !== 0) {
-                    $a.attr('href', msLink);
-                    $a.attr('target', '_blank');
-                    // optional visual marker
-                    $a.css('font-weight', '600');
-                    $a.attr('data-dotx-rewritten', 'true');
+            if (!url || !url.toLowerCase().endsWith(".dotx")) return;
 
-                    rewritten++;
-                    log("Rewrote link to ms-word:", msLink);
-                } else {
-                    log("Already rewritten (skipped):", currentHref);
-                }
-            }
+            log("DOTX template found:", url);
+
+            // Build ms-word link (safe for clicks)
+            var msUrl = "ms-word:ofe|u|" + url;
+
+            $a.attr("href", msUrl);
+            // Important: keep target same window → no popup blocker
+            $a.removeAttr("target");
+
+            $a.attr("data-dotx-rewritten", "true");
+
+            log("Rewritten:", msUrl);
         });
 
-        if (found || rewritten) {
-            log("Summary: DOTX candidates found =", found, ", rewritten =", rewritten);
-        }
+        log("Rewrite complete.");
     }
 
-    // Initial run after SP scripts loaded
-    function init() {
-        log("Starting DOTX link rewrite debug script");
-        processLinks(document);
+    $(document).ready(function () {
+        // Initial run
+        rewriteLinks(document);
 
-        // Setup mutation observer to handle ajax refreshes, filtering, paging etc.
-        var observer = new MutationObserver(function (mutations) {
-            // When changes occur, attempt to process new nodes
-            mutations.forEach(function (m) {
-                if (m.addedNodes && m.addedNodes.length > 0) {
-                    m.addedNodes.forEach(function (node) {
-                        try {
-                            // process each subtree
-                            processLinks(node);
-                        } catch (e) {
-                            console.error("Error processing node:", e);
-                        }
-                    });
-                }
+        // Handle async list updates (filter, sort, paging)
+        var observer = new MutationObserver(function (muts) {
+            muts.forEach(function (m) {
+                if (m.addedNodes.length) rewriteLinks(m.addedNodes);
             });
         });
 
-        // Observe body for subtree changes (lightweight)
         observer.observe(document.body, { childList: true, subtree: true });
-
-        // Expose a manual rerun in console
-        window.rewriteDotxLinksDebug = function () {
-            console.log("Manual rewrite invoked");
-            processLinks(document);
-        };
-
-        log("Rewrite function installed. Use rewriteDotxLinksDebug() to manually re-run if needed.");
-    }
-
-    // Wait until sp.js is ready (common SP pattern)
-    $(document).ready(function () {
-        ExecuteOrDelayUntilScriptLoaded(function () {
-            // Delay a bit more to let view render
-            setTimeout(init, 500);
-        }, "sp.js");
     });
 
 })(jQuery);
