@@ -1,83 +1,57 @@
 <script src="//code.jquery.com/jquery-1.12.4.min.js"></script>
 
 <script>
-(function ($) {
-    var DEBUG = true;
+$(document).ready(function () {
 
-    function log() {
-        if (DEBUG) console.log.apply(console, arguments);
-    }
+    function extractFileUrl($a) {
+        var href = $a.prop("href") || "";
 
-    function extractUrl($a) {
-        var href = $a.attr('href') || '';
-        var propHref = $a.prop('href') || '';
-        var onclick = $a.attr('onclick') || '';
+        // 1. Direct .dotx
+        if (href.toLowerCase().endsWith(".dotx")) return href;
 
-        // Direct href
-        if (href.toLowerCase().endsWith('.dotx')) return href;
+        // 2. Extract from download.aspx?SourceUrl=...
+        var m = href.match(/SourceUrl=([^&]+)/i);
+        if (m) return decodeURIComponent(m[1]);
 
-        // Absolute URL via prop()
-        if (propHref.toLowerCase().endsWith('.dotx')) return propHref;
-
-        // Look inside onclick if SharePoint wrapped it
-        var m = onclick.match(/['"]([^'"]+\.dotx[^'"]*)['"]/i);
-        if (m) return m[1];
+        // 3. Check onclick (SharePoint uses OpenPopUpPageWithTitle)
+        var onclick = $a.attr("onclick") || "";
+        var m2 = onclick.match(/['"]([^'"]+\.dotx[^'"]*)['"]/i);
+        if (m2) return m2[1];
 
         return null;
     }
 
-    function normalize(url) {
-        if (!url) return null;
-        if (url.indexOf('/') === 0) return window.location.origin + url;
-
-        var a = document.createElement('a');
-        a.href = url;
-        return a.href;
-    }
-
-    function rewriteLinks(context) {
-        log("Scanning for DOTX links...");
-
-        $(context).find("a").each(function () {
+    function rewriteDotxLinks(container) {
+        $(container).find("a").each(function () {
             var $a = $(this);
-            var url = extractUrl($a);
+            var fileUrl = extractFileUrl($a);
 
-            if (!url) return;
+            if (!fileUrl || !fileUrl.toLowerCase().endsWith(".dotx"))
+                return;
 
-            url = normalize(url);
+            // normalize relative URL
+            if (fileUrl.startsWith("/")) {
+                fileUrl = window.location.origin + fileUrl;
+            }
 
-            if (!url || !url.toLowerCase().endsWith(".dotx")) return;
-
-            log("DOTX template found:", url);
-
-            // Build ms-word link (safe for clicks)
-            var msUrl = "ms-word:ofe|u|" + url;
+            // use correct protocol
+            var msUrl = "ms-word:nft|u|" + fileUrl;
 
             $a.attr("href", msUrl);
-            // Important: keep target same window → no popup blocker
             $a.removeAttr("target");
-
-            $a.attr("data-dotx-rewritten", "true");
-
-            log("Rewritten:", msUrl);
         });
-
-        log("Rewrite complete.");
     }
 
-    $(document).ready(function () {
-        // Initial run
-        rewriteLinks(document);
+    // Initial run
+    rewriteDotxLinks(document);
 
-        // Handle async list updates (filter, sort, paging)
-        var observer = new MutationObserver(function (muts) {
-            muts.forEach(function (m) {
-                if (m.addedNodes.length) rewriteLinks(m.addedNodes);
-            });
+    // Handle AJAX updates
+    new MutationObserver(function (mutations) {
+        mutations.forEach(function (m) {
+            if (m.addedNodes.length)
+                rewriteDotxLinks(m.addedNodes);
         });
+    }).observe(document.body, { childList: true, subtree: true });
 
-        observer.observe(document.body, { childList: true, subtree: true });
-    });
-
-})(jQuery);
+});
 </script>
