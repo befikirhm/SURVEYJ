@@ -55,3 +55,71 @@ $(document).ready(function () {
 
 });
 </script>
+<style>
+/* GRID WRAPPER */
+.ms-listviewtable {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 16px;
+    border-collapse: separate !important;
+}
+
+/* EACH "ROW" BECOMES A CARD */
+.ms-listviewtable > tbody > tr {
+    display: block !important;
+    width: calc(33.333% - 16px) !important; /* 3 columns */
+    min-height: 160px;
+    background: #fff;
+    border: 1px solid #dadada;
+    border-radius: 8px;
+    padding: 12px 14px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    transition: 0.2s ease;
+}
+
+/* Hover effect */
+.ms-listviewtable > tbody > tr:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+
+/* HIDE COLUMN HEADERS (OPTIONAL) */
+.ms-viewheadertr {
+    display: none !important;
+}
+
+/* EACH CELL BECOMES A FULL-WIDTH BLOCK INSIDE THE CARD */
+.ms-listviewtable td {
+    display: block !important;
+    width: 100% !important;
+    padding: 2px 0 !important;
+    border: none !important;
+}
+
+/* TITLE FIELD (makes file name stand out) */
+.ms-vb-title {
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    margin-bottom: 6px !important;
+    display: inline-block !important;
+}
+
+/* OPTIONAL: REDUCE ECB (three dots) positioning */
+.ms-vb-itmcbx, .ms-vb-itm {
+    margin-bottom: 6px !important;
+}
+
+/* RESPONSIVE — 2 columns on medium screens */
+@media (max-width: 1200px) {
+    .ms-listviewtable > tbody > tr {
+        width: calc(50% - 16px) !important;
+    }
+}
+
+/* 1 column on mobile */
+@media (max-width: 768px) {
+    .ms-listviewtable > tbody > tr {
+        width: 100% !important;
+    }
+}
+</style>
