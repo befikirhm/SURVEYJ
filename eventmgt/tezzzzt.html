@@ -1,0 +1,194 @@
+<style>
+/* ---------- Card grid container (do NOT change table display) ---------- */
+/* Use inline-block rows so table semantics remain intact and layout is stable. */
+.ms-listviewtable tbody tr {
+  display: inline-block !important;
+  vertical-align: top !important;
+  width: calc(33.333% - 20px) !important; /* 3 columns */
+  margin: 10px 10px !important;
+  box-sizing: border-box !important;
+  background: #ffffff !important;
+  border: 1px solid #e0e0e0 !important;
+  border-radius: 8px !important;
+  padding: 12px 14px !important;
+  min-height: 120px !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+  transition: transform .12s ease, box-shadow .12s ease !important;
+  overflow: visible !important; /* allow ECB popup to be visible */
+}
+
+/* Hover lift */
+.ms-listviewtable tbody tr:hover {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12) !important;
+}
+
+/* Keep header row but hide visually (optional) */
+.ms-viewheadertr { display: none !important; }
+
+/* ---------- Make each cell stack inside the card ---------- */
+.ms-listviewtable tbody tr td {
+  display: block !important;
+  width: 100% !important;
+  padding: 2px 0 !important;
+  border: none !important;
+  vertical-align: top !important;
+  box-sizing: border-box !important;
+}
+
+/* Title / Name column styling */
+.ms-vb-title, .ms-vb-title a, .ms-list-itemLinkPrimary {
+  display: block !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  margin-bottom: 8px !important;
+  color: #222 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  max-width: 100% !important;
+}
+
+/* Show full title on hover (tooltip) */
+.ms-vb-title a[title] { cursor: pointer; }
+
+/* ---------- Icon & thumbnail fixes (most common issue) ---------- */
+/* Reset icon floats/positions so icons stay inside the card */
+.ms-list-itemLink img,
+.ms-fileIconCell img,
+.ms-fileIcon,
+img.ms-list-itemIcon {
+  float: left !important;
+  position: relative !important;
+  margin-right: 10px !important;
+  top: 0 !important;
+  left: 0 !important;
+  max-width: 36px !important;
+  max-height: 36px !important;
+  vertical-align: middle !important;
+}
+
+/* If SharePoint places icon in a separate cell, ensure it sits inline */
+.ms-listviewtable tbody tr td img.ms-fileIcon {
+  display: inline-block !important;
+  margin-top: 4px !important;
+}
+
+/* Ensure text wraps correctly next to icon */
+.ms-vb-title, .ms-vb-title a { display: inline-block !important; vertical-align: middle !important; }
+
+/* ---------- ECB (context menu '...') and selection checkbox handling ---------- */
+/* Keep ECB (three dots) in top-right inside the card */
+.ms-calloutLink, .ms-core-menu-root, .ms-list-itemMenuLink {
+  position: relative !important;
+  z-index: 5 !important;
+}
+
+/* If there is a dedicated cell for checkboxes, place it at top-left */
+.ms-vb-itmcbx {
+  position: absolute !important;
+  left: 8px !important;
+  top: 8px !important;
+  z-index: 6 !important;
+}
+
+/* Increase internal padding to avoid overlap with checkbox */
+.ms-listviewtable tbody tr td {
+  padding-left: 28px !important;
+}
+
+/* If checkboxes are not used, remove padding override */
+.ms-listviewtable tbody tr td.no-checkbox {
+  padding-left: 12px !important;
+}
+
+/* ---------- Metadata rows look as badges ---------- */
+.card-meta {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: #f3f4f6;
+  font-size: 12px;
+  color: #444;
+}
+
+/* ---------- Responsive rules ---------- */
+@media (max-width: 1200px) {
+  .ms-listviewtable tbody tr {
+    width: calc(50% - 20px) !important; /* 2 columns */
+  }
+}
+@media (max-width: 700px) {
+  .ms-listviewtable tbody tr {
+    width: 100% !important; /* 1 column */
+    margin: 8px 0 !important;
+  }
+}
+
+/* ---------- Small fixes to prevent weird table borders or cell gaps ---------- */
+.ms-listviewtable, .ms-listviewtable tbody, .ms-listviewtable tr, .ms-listviewtable td {
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  background-clip: padding-box !important;
+}
+
+/* Prevent overflow of long metadata */
+.ms-listviewtable td .ms-metadata {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* Keep ECB popup visible above cards */
+.ms-core-menu-popup {
+  z-index: 99999 !important;
+}
+
+/* Optional: smaller font for secondary metadata */
+.ms-secondaryText { font-size: 12px !important; color: #666 !important; }
+</style>
+<script>
+(function () {
+  function addBadges(root) {
+    var rows = document.querySelectorAll('.ms-listviewtable tbody tr');
+    rows.forEach(function (r) {
+      // avoid duplicate badges
+      if (r.querySelector('.card-meta')) return;
+
+      // pull values from cells - adapt indexes if your view differs
+      var titleCell = r.querySelector('td.ms-vb-title');
+      var modifiedCell = r.querySelector('td:nth-of-type(3)'); // example
+      var authorCell = r.querySelector('td:nth-of-type(4)'); // example
+
+      var metaWrap = document.createElement('div');
+      metaWrap.style.marginTop = '8px';
+
+      try {
+        if (modifiedCell) {
+          var m = document.createElement('span');
+          m.className = 'card-meta';
+          m.textContent = 'Modified: ' + modifiedCell.textContent.trim();
+          metaWrap.appendChild(m);
+        }
+        if (authorCell) {
+          var a = document.createElement('span');
+          a.className = 'card-meta';
+          a.textContent = authorCell.textContent.trim();
+          metaWrap.appendChild(a);
+        }
+      } catch(e){}
+
+      // append to the first td
+      var firstTd = r.querySelector('td');
+      if (firstTd) firstTd.appendChild(metaWrap);
+    });
+  }
+
+  // initial run + mutation observer
+  addBadges(document);
+  new MutationObserver(function(muts){
+    muts.forEach(function(m){ if (m.addedNodes.length) addBadges(m.addedNodes); });
+  }).observe(document.body, { childList:true, subtree:true });
+})();
+</script>
