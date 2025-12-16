@@ -638,6 +638,6 @@ Add callout boxes and arrows (e.g., “Click here to sign”)
 
 Split into Manager-only and Employee-only versions
 
-Align wording exactly with your UKG field names and buttons
+
 
 
