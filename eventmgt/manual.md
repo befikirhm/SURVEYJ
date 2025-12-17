@@ -1,593 +1,290 @@
 UKG Performance Review User Guide
 
-This guide explains how Managers and Employees complete a UKG Performance Review that is built using Attestations as Competencies and follows this workflow:
+Audience
 
-Workflow Order
-
-1. Manager Review & Sign
+This guide is for Managers, Second-Level Managers, and Employees participating in the UKG Performance Review process.
 
 
-2. Department Manager Review & Sign
+---
+
+1. Overview of the UKG Performance Review
+
+The UKG Performance Review process is designed to support consistent, fair, and structured performance evaluations during an employee’s probation period.
+
+Review Structure
+
+The organization uses 4 Review Profiles
+
+Each profile includes:
+
+Mid-Probation Review
+
+Final-Probation Review
 
 
-3. Employee Review & Sign
+
+Review Components
+
+Each review contains two main sections:
+
+A. Core Values (Attestations)
+
+Answered by the Manager
+
+Response options:
+
+Yes
+
+No
 
 
-4. HR Final Review & Finalize
+Includes Supervisor Comments for explanation or examples
+
+
+B. Competencies
+
+Answered by the Manager
+
+Rating options:
+
+Exceeds Expectations
+
+Meets Expectations
+
+Doesn’t Meet Expectations
 
 
 
 
 ---
 
-Part 1: Manager User Guide
+2. How Managers Access the Review
 
-1. Review Initiation (Manager)
+Step 1: Receive Notification
 
-Trigger: You receive an email notification that a performance review is ready for your action.
+Managers receive a UKG notification when a review is ready.
 
-Steps:
+Notifications can be accessed from:
 
-1. Open the email and click Access Review.
-
-
-2. You will be redirected to UKG Ready → Performance → Reviews.
-
-
-3. Select the employee review with status Pending Manager Review.
+The Notification Bell in the upper-left corner of UKG
 
 
 
-📸 Screenshot Placeholder:
+📸 Screenshot: UKG notification bell with review alert
 
-> Review inbox showing employee name, review period, and status.
+Step 2: Open the Review
 
+Click the notification to open the employee’s performance review.
 
+You may also access reviews through:
 
+My To Do Items
 
----
-
-2. Complete Competencies (Attestations)
-
-Each competency is configured as an attestation (Yes/No, rating scale, or acknowledgment).
-
-Steps:
-
-1. Click into the review.
-
-
-2. Navigate to the Competencies or Summary section.
-
-
-3. For each competency:
-
-Read the description carefully.
-
-Select the appropriate response (rating / Yes / No).
-
-Add comments where available.
+Performance > Reviews (menu path may vary by role)
 
 
 
-
-💡 Tip: Required attestations must be completed before signing.
-
-📸 Screenshot Placeholder:
-
-> Competency list with attestation fields and comment box.
-
-
+📸 Screenshot: Review listed in manager To Do items
 
 
 ---
 
-3. Overall Comments (If Applicable)
+3. Manager Review Completion (Manager Level 1)
 
-Steps:
+Step 3: Complete Core Values (Attestations)
 
-1. Scroll to the Overall Feedback section.
+Review each core value carefully.
 
+Select Yes or No for each item.
 
-2. Enter constructive feedback highlighting:
-
-Strengths
-
-Development areas
-
-Goals or expectations
+Enter Supervisor Comments where applicable.
 
 
+📸 Screenshot: Core Values attestation section
 
+Step 4: Complete Competencies
 
-📸 Screenshot Placeholder:
+Rate each competency using:
 
-> Overall comments text box.
+Exceeds
 
+Meets
 
-
-
----
-
-4. Manager Sign-Off
-
-Steps:
-
-1. Review all sections for completeness.
-
-
-2. Navigate to the Summary page.
-
-
-3. Click Sign as Manager.
-
-
-4. Confirm the attestation statement.
+Doesn’t Meet
 
 
 
-✅ Status updates to Pending Department Manager Review.
+📸 Screenshot: Competency rating section
 
-📸 Screenshot Placeholder:
+Step 5: Submit the Review
 
-> Summary page showing “Sign as Manager” button.
+Review all responses for accuracy.
+
+Click Submit to move the review to the signing stage.
 
 
+📸 Screenshot: Submit button on review summary
 
 
 ---
 
-5. Department Manager Review & Sign
+4. Manager Signature (Manager Level 1)
 
-Trigger: Department Manager receives an email notification.
+Step 6: Sign as Manager
 
-Steps (Department Manager):
+After submission, the review enters the Manager Signature stage.
 
-1. Open the review from the email or UKG inbox.
+Click Sign as Manager.
 
-
-2. Review manager feedback and competencies.
-
-
-3. Add comments if enabled.
+Enter your UKG password to authenticate.
 
 
-4. Click Sign as Department Manager.
+📸 Screenshot: Manager signature screen
 
-
-
-✅ Status updates to Pending Employee Review.
-
-📸 Screenshot Placeholder:
-
-> Department manager sign-off section.
-
-
+Once signed, the review automatically routes to the next step.
 
 
 ---
 
-Part 2: Employee User Guide
+5. Second-Level Manager Signature (If Applicable)
 
-6. Employee Review Notification
+Step 7: Manager Level 2 Review & Signature
 
-Trigger: Employee receives an email notification that the review is ready.
+If a second-level manager is assigned:
 
-Steps:
+They receive a UKG notification
 
-1. Click Access Review from the email.
+Open the review
 
+Click Sign as Manager
 
-2. Log in to UKG Ready → Performance → Reviews.
-
-
-3. Open the review with status Pending Employee Review.
+Enter their UKG password
 
 
 
-📸 Screenshot Placeholder:
+📸 Screenshot: Manager Level 2 signature screen
 
-> Employee review inbox view.
-
-
+If no second-level manager exists, this step is skipped automatically.
 
 
 ---
 
-7. Review Manager Feedback & Competencies
+6. Employee Review & Signature
 
-Steps:
+Step 8: Employee Notification
 
-1. Read all competency responses.
-
-
-2. Review manager and department manager comments.
+The employee receives a UKG notification once manager approvals are complete.
 
 
-3. Navigate section by section for full visibility.
+📸 Screenshot: Employee notification
+
+Step 9: Employee Review
+
+The employee opens the review.
+
+Reviews manager feedback, ratings, and comments.
 
 
+📸 Screenshot: Employee review view
 
-📸 Screenshot Placeholder:
+Step 10: Employee Signature
 
-> Read-only view of competencies and comments.
+Click Sign as Employee.
 
-
-
-
----
-
-8. Employee Comments (If Enabled)
-
-Steps:
-
-1. Scroll to Employee Comments section.
+Enter UKG password to acknowledge the review.
 
 
-2. Add:
-
-Acknowledgment
-
-Agreement or clarification
-
-Development goals or feedback
-
-
-
-
-📸 Screenshot Placeholder:
-
-> Employee comment box.
-
-
+📸 Screenshot: Employee signature screen
 
 
 ---
 
-9. Employee Sign-Off
-
-Steps:
-
-1. Navigate to the Summary page.
-
-
-2. Read the employee attestation statement.
-
-
-3. Click Sign as Employee.
-
-
-4. Confirm submission.
-
-
-
-✅ Status updates to Pending HR Final Review.
-
-📸 Screenshot Placeholder:
-
-> Employee sign button on Summary page.
-
-
-
-
----
-
-Part 3: HR Finalization (Reference)
-
-10. HR Review & Finalize
-
-Steps (HR):
-
-1. Open the completed review.
-
-
-2. Verify all attestations and signatures.
-
-
-3. Ensure compliance and completeness.
-
-
-4. Click Finalize Review.
-
-
-
-✅ Review status becomes Completed / Finalized.
-
-📸 Screenshot Placeholder:
-
-> HR finalize button.
-
-
-
-
----
-
-Common Issues & Tips
-
-Sign button not visible: Ensure all required attestations are completed.
-
-Cannot edit after signing: Signing locks previous sections.
-
-Missing competencies: Check review template and eligibility rules.
-
-
-
----
-
-Support
-
-If you experience issues:
-
-Contact HR for workflow or content questions.
-
-Contact UKG Support for system errors.
-
-
-
----
-
-
----
-
-Detailed Step-by-Step Instructions (With Screenshot References)
-
-> Note: Screenshots referenced below should be captured from your UKG Ready environment and inserted where indicated before final publication.
-
-
-
-
----
-
-Manager Step-by-Step Instructions
-
-Step 1: Access the Performance Review
-
-Trigger: Manager receives an automated email notification.
-
-Actions:
-
-1. Open the email titled Performance Review Action Required.
-
-
-2. Select Access Review.
-
-
-3. Log in to UKG Ready if prompted.
-
-
-
-📸 Screenshot 1: Manager email notification highlighting Access Review link.
-
-
----
-
-Step 2: Locate the Review in UKG
-
-Actions:
-
-1. Navigate to Menu → Performance → Reviews.
-
-
-2. Locate the review with status Pending Manager Review.
-
-
-3. Click the employee name to open the review.
-
-
-
-📸 Screenshot 2: Reviews list showing review status.
-
-
----
-
-Step 3: Complete Competency Attestations
-
-Actions:
-
-1. Open the Competencies section.
-
-
-2. Review each competency description.
-
-
-3. Complete the attestation (rating / Yes–No / acknowledgment).
-
-
-4. Enter comments where available.
-
-
-
-⚠️ Important: All required attestations must be completed to enable signing.
-
-📸 Screenshot 3: Competency attestation fields with comments.
-
-
----
-
-Step 4: Enter Overall Manager Feedback
-
-Actions:
-
-1. Scroll to Overall Feedback.
-
-
-2. Provide balanced, professional comments covering:
-
-Performance strengths
-
-Development areas
-
-Goals or expectations
-
-
-
-
-📸 Screenshot 4: Overall feedback text box.
-
-
----
-
-Step 5: Manager Sign-Off
-
-Actions:
-
-1. Select the Summary tab.
-
-
-2. Review all completed sections.
-
-
-3. Click Sign as Manager.
-
-
-4. Confirm the attestation statement.
-
-
-
-✅ Review status updates to Pending Department Manager Review.
-
-📸 Screenshot 5: Summary page with Sign as Manager button.
-
-
----
-
-Department Manager Step-by-Step Instructions
-
-Step 6: Department Manager Review & Sign
-
-Actions:
-
-1. Open the review from the email notification or review inbox.
-
-
-2. Review manager inputs and competencies.
-
-
-3. Add comments if enabled.
-
-
-4. Click Sign as Department Manager.
-
-
-
-📸 Screenshot 6: Department manager sign-off section.
-
-
----
-
-Employee Step-by-Step Instructions
-
-Step 7: Employee Access to Review
-
-Actions:
-
-1. Open the email notification.
-
-
-2. Click Access Review.
-
-
-3. Navigate to Performance → Reviews if needed.
-
-
-
-📸 Screenshot 7: Employee review inbox.
-
-
----
-
-Step 8: Review Feedback and Competencies
-
-Actions:
-
-1. Review all competency responses.
-
-
-2. Read manager and department manager comments carefully.
-
-
-3. Navigate through all sections before responding.
-
-
-
-📸 Screenshot 8: Read-only competency view.
-
-
----
-
-Step 9: Enter Employee Comments (If Enabled)
-
-Actions:
-
-1. Scroll to Employee Comments.
-
-
-2. Enter acknowledgment or feedback.
-
-
-3. Save comments before proceeding.
-
-
-
-📸 Screenshot 9: Employee comments field.
-
-
----
-
-Step 10: Employee Sign-Off
-
-Actions:
-
-1. Open the Summary tab.
-
-
-2. Review the employee attestation statement.
-
-
-3. Click Sign as Employee.
-
-
-4. Confirm submission.
-
-
-
-✅ Review status updates to Pending HR Final Review.
-
-📸 Screenshot 10: Employee sign button.
-
-
----
-
-HR Final Review (Reference)
+7. HR Finalization
 
 Step 11: HR Review & Finalize
 
-Actions:
+After employee signature, the review routes to HR.
 
-1. Open the completed review.
+HR reviews the completed document.
 
-
-2. Verify all attestations and signatures.
-
-
-3. Ensure compliance with company policy.
+HR finalizes and archives the review.
 
 
-4. Click Finalize Review.
-
-
-
-📸 Screenshot 11: HR finalize review button.
+📸 Screenshot: HR finalize screen
 
 
 ---
 
-Troubleshooting & Common Scenarios
+8. Key Notes & Best Practices
 
-Sign button missing: Required attestations or comments are incomplete.
+Always save your work before leaving the review.
 
-Review locked: A previous participant has already signed.
+Ensure comments are clear, professional, and constructive.
 
-Incorrect workflow: Contact HR to validate review template and routing.
+Employees should review all feedback before signing.
+
+Signing confirms acknowledgment, not necessarily agreement.
 
 
 
+---
+
+9. Common Questions
+
+Q: Where can I find my review if I miss the notification?
+A: Use the Notification Bell or navigate to My To Do Items in UKG.
+
+Q: Why can’t I see the Sign button?
+A: The review must be submitted by the previous step before signing becomes available.
+
+Q: Can I edit the review after signing?
+A: No. Once signed, the review moves forward in the workflow.
+
+
+---
+
+10. Support
+
+If you experience issues accessing or signing the review, please contact HR or your UKG system administrator.
+
+I’ve rewritten your setup into a clear, step-by-step UKG user guide tailored for Managers and Employees, with explicit callouts for where screenshots should be added so it’s easy to turn this into a PDF or internal webpage.
+
+What this guide is good for
+
+✔️ Manager-friendly language (no admin jargon)
+
+✔️ Employee-friendly explanations (especially signing)
+
+✔️ Matches your exact workflow (Manager → Manager 2 → Employee → HR)
+
+✔️ Ready to hand off to HR, comms, or training teams
+
+✔️ Easy to add real UKG screenshots later
+
+
+Next improvements I can do for you
+
+If you want, I can:
+
+1. Mark exact UKG page names where each screenshot should be taken
+
+
+2. Convert this into:
+
+📄 Printable PDF
+
+🌐 Internal web page
+
+
+
+3. Create a 1-page quick reference for managers
+
+
+4. Add a “What employees should know” short version
+
+
+5. Adjust tone (more formal / more friendly)
+
+
+
+Just tell me how this will be used (HR guide, intranet, training, email attachment), and I’ll refine it perfectly for that purpose.
