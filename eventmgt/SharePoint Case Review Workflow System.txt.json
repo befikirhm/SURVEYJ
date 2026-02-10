@@ -1,0 +1,1999 @@
+SharePoint Case Review Workflow System
+Complete Configuration Guide
+Nintex Workflow 4.4.1.0 Standard | SharePoint 2016
+Table of Contents
+System Overview
+SharePoint Structure
+Email Templates
+Workflow Configurations
+Testing Procedures
+Troubleshooting Guide
+System Overview
+Architecture
+┌─────────────────────────────────────────────────────────────┐
+│                    CASE REVIEW PROCESS                      │
+└─────────────────────────────────────────────────────────────┘
+
+[User Creates Case]
+        │
+        ▼
+┌───────────────────────────────┐
+│ WORKFLOW 1: Case Initialize   │
+│ • Create folder               │
+│ • Send assignment email       │
+└───────────┬───────────────────┘
+            │
+            ▼
+[User sets "Awaiting Feedback"]
+            │
+            ▼
+┌───────────────────────────────┐
+│ WORKFLOW 2: Request Feedback  │
+│ • Send to intake contact      │
+│ • Send to screening members   │
+└───────────┬───────────────────┘
+            │
+            ▼
+[Members submit feedback]
+            │
+            ▼
+┌───────────────────────────────┐
+│ WORKFLOW 3: Feedback Manager  │
+│ • Count submissions           │
+│ • Check completion            │
+│ • Handle additional requests  │
+└───────────┬───────────────────┘
+            │
+            ▼
+[All feedback received]
+            │
+            ▼
+┌───────────────────────────────┐
+│ WORKFLOW 4: Compile & Send    │
+│ • Build compiled document     │
+│ • Send individual emails      │
+└───────────────────────────────┘
+Components
+SharePoint Lists: 4
+Case Review (main tracking)
+Case Documents (document library)
+Email Templates (customizable templates)
+Feedback Submissions (feedback collection)
+Nintex Workflows: 4
+Case Initialization
+Request Feedback
+Feedback Manager (merged counter + additional requests)
+Compile & Distribute
+Email Templates: 5
+Case Assignment
+Intake Feedback Request
+Screening Feedback Request
+Individual Feedback Delivery
+Additional Feedback Request
+SharePoint Structure
+List 1: Case Review
+Create List
+Site Contents → New → List
+Name: Case Review
+Description: Main tracking list for case review process
+Columns
+Column Name
+Type
+Settings
+Required
+Default
+Case ID
+Single line of text
+Enforce unique values: Yes
+Yes
+-
+Case Name
+Single line of text
+Max 255 chars
+Yes
+-
+Case Status
+Choice
+See choices below
+Yes
+New
+Date Identified
+Date and Time
+Date Only
+Yes
+-
+Source
+Choice
+See choices below
+Yes
+-
+Assigned Workgroup
+Person or Group
+Allow multiple: Yes
+Yes
+-
+Screening Team Members
+Person or Group
+Allow multiple: Yes
+Yes
+-
+Intake Service Team Contact
+Person or Group
+Allow multiple: No
+Yes
+-
+Supervisor
+Person or Group
+Allow multiple: No
+Yes
+-
+Review Meeting Date
+Date and Time
+Date Only
+No
+-
+Review Meeting Notes
+Multiple lines of text
+Enhanced rich text
+No
+-
+Feedback Compiled Date
+Date and Time
+Date and Time
+No
+-
+Folder Name
+Calculated
+="Case_"&[Case ID]
+No
+-
+Documents Link
+Hyperlink
+-
+No
+-
+All Feedback Received
+Yes/No
+-
+No
+No
+Feedback Count
+Number
+Min: 0, Decimals: 0
+No
+0
+Expected Feedback Count
+Number
+Min: 0, Decimals: 0
+No
+0
+Themes Identified
+Multiple lines of text
+Plain text, 6 lines
+No
+-
+Theme Meeting Date
+Date and Time
+Date Only
+No
+-
+Case Status Choices:
+New
+Documents Uploaded
+Awaiting Feedback
+Feedback Received
+Feedback Compiled
+Feedback Sent
+Completed
+Source Choices:
+Workgroup Selection
+Service Team Referral
+Views
+Active Cases (Default)
+Filter: Case Status ≠ "Completed"
+Columns: Case ID, Case Name, Case Status, Date Identified, Feedback Count, Expected Feedback Count, Documents Link
+Sort: Date Identified (descending)
+Awaiting Feedback
+Filter: Case Status = "Awaiting Feedback"
+Columns: Case ID, Case Name, Screening Team Members, Feedback Count, Expected Feedback Count, Documents Link
+Sort: Date Identified (descending)
+Ready for Compilation
+Filter: All Feedback Received = Yes AND Case Status = "Feedback Received"
+Columns: Case ID, Case Name, Feedback Count, All Feedback Received
+Sort: Date Identified (descending)
+Completed Cases
+Filter: Case Status = "Completed" OR "Feedback Sent"
+Columns: Case ID, Case Name, Date Identified, Feedback Compiled Date, Documents Link
+Sort: Feedback Compiled Date (descending)
+List 2: Case Documents Library
+Create Library
+Site Contents → New → Document Library
+Name: Case Documents
+Description: Storage for all case-related documents
+Settings
+Library Settings → Advanced Settings
+Make 'New Folder' command available: Yes
+Columns
+Column Name
+Type
+Settings
+Required
+Case ID
+Lookup
+Get from: Case Review → Case ID
+No
+Document Type
+Choice
+See choices below
+No
+Document Type Choices:
+AI Report
+Safety Assessment
+Safety Plan
+Activity Logs
+Phone Call Records
+Intake Report
+Compiled Feedback
+Other
+Views
+All Documents (Default)
+Columns: Name, Case ID, Document Type, Modified, Modified By
+Sort: Modified (descending)
+By Case
+Columns: Name, Document Type, Modified
+Group by: Case ID
+Sort: Modified (descending)
+List 3: Email Templates
+Create List
+Site Contents → New → List
+Name: Email Templates
+Description: Customizable email templates for workflows
+Columns
+Column Name
+Type
+Settings
+Required
+Template Name
+Single line of text
+Max 100, Unique: Yes
+Yes
+Template Type
+Choice
+See choices below
+Yes
+Email Subject
+Single line of text
+Max 255
+Yes
+Email Body
+Multiple lines of text
+Enhanced rich text
+Yes
+Active
+Yes/No
+Default: Yes
+No
+Template Type Choices:
+Case Assignment
+Intake Feedback Request
+Screening Feedback Request
+Feedback Reminder
+Individual Feedback Delivery
+Additional Feedback Request
+Available Tokens
+Use these tokens in Email Subject and Email Body:
+[CaseID] - Case ID
+[CaseName] - Case Name
+[DateIdentified] - Date Identified
+[Source] - Case Source
+[DocumentsLink] - Link to case folder
+[FeedbackLink] - Link to submit feedback
+[ScreeningMember] - Screening member name
+[Supervisor] - Supervisor name
+[IntakeContact] - Intake contact name
+[ReviewMeetingDate] - Meeting date
+[FeedbackContent] - Individual feedback text
+List 4: Feedback Submissions
+Create List
+Site Contents → New → List
+Name: Feedback Submissions
+Description: Collection of feedback from team members
+Columns
+Column Name
+Type
+Settings
+Required
+Default
+Case ID
+Lookup
+Get from: Case Review → Case ID
+Yes
+-
+Screening Team Member
+Person or Group
+Allow multiple: No
+Yes
+-
+Supervisor
+Person or Group
+Allow multiple: No
+No
+-
+Feedback Text
+Multiple lines of text
+Enhanced rich text
+Yes
+-
+Feedback Document
+Hyperlink
+-
+No
+-
+Submission Status
+Choice
+See choices below
+Yes
+Submitted
+Date Submitted
+Date and Time
+Date and Time
+No
+=TODAY()
+Additional Feedback Requested
+Yes/No
+-
+No
+No
+Additional Feedback Text
+Multiple lines of text
+Enhanced rich text
+No
+-
+Additional Feedback Date
+Date and Time
+Date and Time
+No
+-
+Submission Status Choices:
+Draft
+Submitted
+Compiled
+Sent to Member
+Views
+All Feedback (Default)
+Columns: Case ID, Screening Team Member, Submission Status, Date Submitted, Additional Feedback Requested
+Sort: Date Submitted (descending)
+By Case
+Columns: Screening Team Member, Submission Status, Date Submitted, Additional Feedback Requested
+Group by: Case ID
+Sort: Date Submitted (ascending)
+Pending Submissions
+Filter: Submission Status = "Draft" OR "Submitted"
+Columns: Case ID, Screening Team Member, Submission Status, Date Submitted
+Sort: Date Submitted (ascending)
+Additional Feedback Needed
+Filter: Additional Feedback Requested = Yes
+Columns: Case ID, Screening Team Member, Supervisor, Date Submitted
+Sort: Date Submitted (descending)
+Email Templates
+Template 1: Case Assignment
+Template Name: Case Assignment Email
+Template Type: Case Assignment
+Active: Yes
+Email Subject:
+Case [CaseID] Assigned for Review - [CaseName]
+Email Body:
+Dear Team,
+
+A new case has been assigned to your workgroup for review.
+
+Case Details:
+• Case ID: [CaseID]
+• Case Name: [CaseName]
+• Date Identified: [DateIdentified]
+• Source: [Source]
+
+Please access the case materials at the following location:
+[DocumentsLink]
+
+Next Steps:
+1. Review all uploaded materials in the case folder
+2. Prepare for team review meeting scheduled for [ReviewMeetingDate]
+3. Be ready to provide feedback when requested by the Quality Assurance Team
+
+If you have any questions or need additional information, please contact [IntakeContact].
+
+Thank you for your cooperation.
+
+Best regards,
+Quality Assurance Team
+Template 2: Intake Feedback Request
+Template Name: Intake Feedback Request
+Template Type: Intake Feedback Request
+Active: Yes
+Email Subject:
+Feedback Requested - Case [CaseID]
+Email Body:
+Dear [IntakeContact],
+
+We are conducting a quality assurance review of Case [CaseID] - [CaseName].
+
+As the Intake Service Team contact for this case, we are requesting your feedback within the next 5 business days.
+
+Case Information:
+• Case ID: [CaseID]
+• Case Name: [CaseName]
+• Date Identified: [DateIdentified]
+
+Please use the links below to:
+• Review case materials: [DocumentsLink]
+• Submit your feedback: [FeedbackLink]
+
+Your feedback is an important part of our quality improvement process and will be used to identify themes and areas for improvement.
+
+If you have any questions or need assistance, please contact the Quality Assurance Team.
+
+Thank you for your time and cooperation.
+
+Best regards,
+Quality Assurance Team
+Template 3: Screening Team Feedback Request
+Template Name: Screening Team Feedback Request
+Template Type: Screening Feedback Request
+Active: Yes
+Email Subject:
+Your Feedback Needed - Case [CaseID]
+Email Body:
+Dear [ScreeningMember],
+
+You have been identified as a screening team member who worked on Case [CaseID] - [CaseName].
+
+As part of our quality assurance process, we are requesting your feedback on this case.
+
+Case Details:
+• Case ID: [CaseID]
+• Case Name: [CaseName]
+• Date Identified: [DateIdentified]
+• Source: [Source]
+
+Please provide your feedback within 5 business days using the links below:
+• Access case materials: [DocumentsLink]
+• Submit your feedback: [FeedbackLink]
+
+Your supervisor ([Supervisor]) will also receive a copy of your feedback. This is part of our ongoing effort to improve service quality and identify training opportunities.
+
+Your input is valuable and will be kept confidential within the quality assurance team.
+
+If you have questions or need clarification, please don't hesitate to reach out.
+
+Thank you for your participation.
+
+Best regards,
+Quality Assurance Team
+Template 4: Individual Feedback Delivery
+Template Name: Individual Feedback Delivery
+Template Type: Individual Feedback Delivery
+Active: Yes
+Email Subject:
+Your Feedback Summary - Case [CaseID]
+Email Body:
+Dear [ScreeningMember],
+
+Thank you for providing your feedback on Case [CaseID] - [CaseName].
+
+Please find your submitted feedback below:
+
+─────────────────────────────────────────
+[FeedbackContent]
+─────────────────────────────────────────
+
+This feedback has been shared with your supervisor ([Supervisor]) as part of the standard quality assurance process.
+
+The complete case review, including feedback from all team members, has been finalized and uploaded to the case folder for future reference.
+
+If you have any questions about this feedback or the review process, please contact the Quality Assurance Team.
+
+Thank you for your contribution to improving our service quality.
+
+Best regards,
+Quality Assurance Team
+Template 5: Additional Feedback Request
+Template Name: Additional Feedback Request
+Template Type: Additional Feedback Request
+Active: Yes
+Email Subject:
+Additional Feedback Requested - Case [CaseID]
+Email Body:
+Dear [ScreeningMember],
+
+Thank you for your initial feedback on Case [CaseID].
+
+We are requesting additional information or clarification regarding your feedback. Please review your original submission below and provide any additional details that may be helpful.
+
+Your Original Feedback:
+─────────────────────────────────────────
+[FeedbackContent]
+─────────────────────────────────────────
+
+Please submit your additional feedback by updating your original submission in the Feedback Submissions list, or by replying to this email.
+
+Your supervisor ([Supervisor]) is copied on this request.
+
+Thank you for your continued cooperation.
+
+Best regards,
+Quality Assurance Team
+Workflow Configurations
+Workflow 1: Case Initialization
+Basic Settings
+Location: Case Review List
+Name: Case Initialization
+Description: Creates folder and sends assignment email when new case is created
+Start Options
+✅ Allow manual start
+✅ Start when items are created
+❌ Start when items are modified
+❌ Start on a schedule
+Workflow Variables
+varCaseID - Single line of text
+varCaseName - Single line of text
+varFolderName - Single line of text
+varSiteURL - Single line of text
+varDocLibURL - Single line of text
+varDocumentsLink - Single line of text
+varDateIdentified - Single line of text
+varSource - Single line of text
+varReviewDate - Single line of text
+varIntakeContact - Single line of text
+varTemplateSubject - Single line of text
+varTemplateBody - Multiple lines of text
+varEmailSubject - Single line of text
+varEmailBody - Multiple lines of text
+varRestResponse - Multiple lines of text
+varRestBody - Multiple lines of text
+varCurrentItemID - Number
+
+colEmailTemplate - Collection
+Workflow Actions
+1. Log Workflow Start
+Action: Log to History List
+Message: "WORKFLOW START: Initializing Case " + {Current Item:Case ID}
+2. Set Core Variables
+Action: Set Variable
+varCurrentItemID = {Current Item:ID}
+
+Action: Set Variable
+varCaseID = {Current Item:Case ID}
+
+Action: Set Variable
+varCaseName = {Current Item:Case Name}
+
+Action: Set Variable
+varSiteURL = http://sharepoint/sites/yoursite
+(Replace with your actual site URL - no trailing slash)
+
+Action: Set Variable
+varDocLibURL = {WorkflowVariable:varSiteURL}/Case Documents
+
+Action: Set Variable
+varDateIdentified = fn-FormatDate({Current Item:Date Identified},"MM/dd/yyyy")
+
+Action: Set Variable
+varSource = {Current Item:Source}
+
+Action: Set Variable
+varReviewDate = fn-FormatDate({Current Item:Review Meeting Date},"MM/dd/yyyy")
+
+Action: Set Variable
+varIntakeContact = {Current Item:Intake Service Team Contact:DisplayName}
+3. Build Folder Name
+Action: Set Variable
+varFolderName = "Case_" + {WorkflowVariable:varCaseID}
+4. Build REST Body for Folder Creation
+Action: Build String
+Store in: varRestBody
+
+Pattern:
+{
+  "__metadata": {
+    "type": "SP.Data.Case_x0020_DocumentsItem"
+  },
+  "Title": "{WorkflowVariable:varCaseName}",
+  "FileLeafRef": "{WorkflowVariable:varFolderName}",
+  "ContentTypeId": "0x0120D520",
+  "FSObjType": 1
+}
+
+IMPORTANT: Get correct metadata type:
+1. Navigate to: {YourSiteURL}/_api/web/lists/getbytitle('Case Documents')?$select=ListItemEntityTypeFullName
+2. Copy ListItemEntityTypeFullName value
+3. Replace "SP.Data.Case_x0020_DocumentsItem" with that value
+5. Create Folder via REST API
+Action: Call HTTP Web Service
+
+URL: {WorkflowVariable:varSiteURL}/_api/web/lists/getbytitle('Case Documents')/items
+
+Request type: HTTP POST
+
+Request headers:
+  Accept | application/json;odata=verbose
+  Content-Type | application/json;odata=verbose
+
+Request content: {WorkflowVariable:varRestBody}
+
+Response content: Store in varRestResponse
+
+Advanced:
+  Request timeout: 60 seconds
+  Retry count: 2
+6. Build Documents Link
+Action: Build String
+Store in: varDocumentsLink
+
+Pattern: {WorkflowVariable:varSiteURL}/Case Documents/{WorkflowVariable:varFolderName}
+7. Update Case Item
+Action: Update Item
+List: Case Review
+Item ID: {WorkflowVariable:varCurrentItemID}
+
+Fields:
+  Documents Link = {WorkflowVariable:varDocumentsLink}
+  Case Status = Documents Uploaded
+8. Query Email Template
+Action: Query List
+List: Email Templates
+Filter:
+  Template Type equals "Case Assignment"
+  AND Active equals Yes
+Number of items: 1
+Store in: colEmailTemplate
+9. Get Template from Collection
+Action: For Each
+Collection: colEmailTemplate
+Store current in: currentTemplate
+
+Actions inside loop:
+  Set Variable: varTemplateSubject = {Variable:currentTemplate:Email Subject}
+  Set Variable: varTemplateBody = {Variable:currentTemplate:Email Body}
+10-17. Replace Tokens in Subject and Body
+Subject replacements:
+Action: Regular Expression
+Pattern: {WorkflowVariable:varTemplateSubject}
+Regular expression: \[CaseID\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseID}
+Store in: varEmailSubject
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailSubject}
+Regular expression: \[CaseName\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseName}
+Store in: varEmailSubject
+Body replacements:
+Action: Regular Expression
+Pattern: {WorkflowVariable:varTemplateBody}
+Regular expression: \[CaseID\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseID}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[CaseName\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseName}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[DateIdentified\]
+Operation: Replace
+Replacement: {WorkflowVariable:varDateIdentified}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[Source\]
+Operation: Replace
+Replacement: {WorkflowVariable:varSource}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[DocumentsLink\]
+Operation: Replace
+Replacement: {WorkflowVariable:varDocumentsLink}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[ReviewMeetingDate\]
+Operation: Replace
+Replacement: {WorkflowVariable:varReviewDate}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[IntakeContact\]
+Operation: Replace
+Replacement: {WorkflowVariable:varIntakeContact}
+Store in: varEmailBody
+18. Send Assignment Email
+Action: Send Email
+To: {Current Item:Assigned Workgroup}
+Subject: {WorkflowVariable:varEmailSubject}
+Body: {WorkflowVariable:varEmailBody}
+Priority: Normal
+19. Log Completion
+Action: Log to History List
+Message: "WORKFLOW COMPLETE: Case " + {WorkflowVariable:varCaseID} + " initialized. Folder created and assignment email sent."
+Workflow 2: Request Feedback
+Basic Settings
+Location: Case Review List
+Name: Request Feedback
+Description: Sends feedback requests when status changes to Awaiting Feedback
+Start Options
+✅ Allow manual start
+❌ Start when items are created
+✅ Start when items are modified
+❌ Start on a schedule
+If available: Start only when Case Status field changes
+Workflow Variables
+varCaseID - Single line of text
+varCaseName - Single line of text
+varDocumentsLink - Single line of text
+varSiteURL - Single line of text
+varFeedbackLink - Single line of text
+varDateIdentified - Single line of text
+varIntakeContact - Single line of text
+varSupervisor - Single line of text
+varScreeningMemberCount - Number
+varExpectedFeedbackCount - Number
+varCurrentItemID - Number
+varTemplateSubject - Single line of text
+varTemplateBody - Multiple lines of text
+varEmailSubject - Single line of text
+varEmailBody - Multiple lines of text
+varCurrentMember - Person
+varCurrentMemberName - Single line of text
+varAlreadyRan - Number
+
+colEmailTemplate - Collection
+colScreeningMembers - Collection
+Workflow Actions
+1. Check if Already Ran (Loop Prevention)
+Action: Query List
+List: Workflow History
+Filter:
+  List ID equals {Current Item:ID}
+  AND Workflow Name contains "Request Feedback"
+  AND Created is greater than {Common:Today} - 1 day
+  AND Description contains "WORKFLOW COMPLETE"
+Number of items: 1
+Store count in: varAlreadyRan
+
+Action: Run If
+Condition: varAlreadyRan is greater than 0
+Then:
+  Action: Log to History List
+  Message: "Workflow already ran today. Terminating to prevent duplicates."
+  
+  Action: Terminate Workflow
+2. Check Case Status
+Action: Run If
+Condition: {Current Item:Case Status} is not equal to "Awaiting Feedback"
+Then:
+  Action: Log to History List
+  Message: "Case status is not 'Awaiting Feedback'. Workflow terminated."
+  
+  Action: Terminate Workflow
+3. Log Start
+Action: Log to History List
+Message: "WORKFLOW START: Requesting feedback for Case " + {Current Item:Case ID}
+4. Set Core Variables
+Action: Set Variable
+varCurrentItemID = {Current Item:ID}
+
+Action: Set Variable
+varCaseID = {Current Item:Case ID}
+
+Action: Set Variable
+varCaseName = {Current Item:Case Name}
+
+Action: Set Variable
+varDocumentsLink = {Current Item:Documents Link}
+
+Action: Set Variable
+varSiteURL = http://sharepoint/sites/yoursite
+
+Action: Set Variable
+varDateIdentified = fn-FormatDate({Current Item:Date Identified},"MM/dd/yyyy")
+
+Action: Set Variable
+varIntakeContact = {Current Item:Intake Service Team Contact:DisplayName}
+
+Action: Set Variable
+varSupervisor = {Current Item:Supervisor:DisplayName}
+5. Get Screening Members Collection
+Action: Set Variable
+colScreeningMembers = {Current Item:Screening Team Members}
+6. Count Screening Members
+Action: Count Items in Collection
+Collection: colScreeningMembers
+Store in: varScreeningMemberCount
+7. Calculate Expected Feedback Count
+Action: Set Variable
+varExpectedFeedbackCount = {WorkflowVariable:varScreeningMemberCount} + 1
+(The +1 is for Intake Contact)
+8. Update Expected Count
+Action: Update Item
+List: Case Review
+Item ID: {WorkflowVariable:varCurrentItemID}
+Fields:
+  Expected Feedback Count = {WorkflowVariable:varExpectedFeedbackCount}
+9. Build Feedback Submission Link
+Action: Build String
+Store in: varFeedbackLink
+
+Pattern: {WorkflowVariable:varSiteURL}/Lists/Feedback%20Submissions/NewForm.aspx?CaseID={WorkflowVariable:varCaseID}
+10. Get Intake Feedback Template
+Action: Query List
+List: Email Templates
+Filter:
+  Template Type equals "Intake Feedback Request"
+  AND Active equals Yes
+Number of items: 1
+Store in: colEmailTemplate
+
+Action: For Each
+Collection: colEmailTemplate
+Store current in: currentTemplate
+Actions:
+  Set Variable: varTemplateSubject = {Variable:currentTemplate:Email Subject}
+  Set Variable: varTemplateBody = {Variable:currentTemplate:Email Body}
+11. Build Intake Email (Token Replacements)
+[Subject]
+Action: Regular Expression
+Pattern: {WorkflowVariable:varTemplateSubject}
+Regular expression: \[CaseID\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseID}
+Store in: varEmailSubject
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailSubject}
+Regular expression: \[CaseName\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseName}
+Store in: varEmailSubject
+
+[Body]
+Action: Regular Expression
+Pattern: {WorkflowVariable:varTemplateBody}
+Regular expression: \[CaseID\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseID}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[CaseName\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseName}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[DateIdentified\]
+Operation: Replace
+Replacement: {WorkflowVariable:varDateIdentified}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[DocumentsLink\]
+Operation: Replace
+Replacement: {WorkflowVariable:varDocumentsLink}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[FeedbackLink\]
+Operation: Replace
+Replacement: {WorkflowVariable:varFeedbackLink}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[IntakeContact\]
+Operation: Replace
+Replacement: {WorkflowVariable:varIntakeContact}
+Store in: varEmailBody
+12. Send Email to Intake Contact
+Action: Send Email
+To: {Current Item:Intake Service Team Contact}
+Subject: {WorkflowVariable:varEmailSubject}
+Body: {WorkflowVariable:varEmailBody}
+13. Get Screening Member Template
+Action: Query List
+List: Email Templates
+Filter:
+  Template Type equals "Screening Feedback Request"
+  AND Active equals Yes
+Number of items: 1
+Store in: colEmailTemplate
+
+Action: For Each
+Collection: colEmailTemplate
+Store current in: currentTemplate
+Actions:
+  Set Variable: varTemplateSubject = {Variable:currentTemplate:Email Subject}
+  Set Variable: varTemplateBody = {Variable:currentTemplate:Email Body}
+14. Loop Through Screening Members
+Action: For Each
+Collection: colScreeningMembers
+Store current in: varCurrentMember
+
+──── Actions Inside Loop ────
+
+Action: Set Variable
+varCurrentMemberName = {WorkflowVariable:varCurrentMember:DisplayName}
+
+[Replace tokens in subject]
+Action: Regular Expression
+Pattern: {WorkflowVariable:varTemplateSubject}
+Regular expression: \[CaseID\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseID}
+Store in: varEmailSubject
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailSubject}
+Regular expression: \[CaseName\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseName}
+Store in: varEmailSubject
+
+[Replace tokens in body]
+Action: Regular Expression
+Pattern: {WorkflowVariable:varTemplateBody}
+Regular expression: \[CaseID\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseID}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[CaseName\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseName}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[DateIdentified\]
+Operation: Replace
+Replacement: {WorkflowVariable:varDateIdentified}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[DocumentsLink\]
+Operation: Replace
+Replacement: {WorkflowVariable:varDocumentsLink}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[FeedbackLink\]
+Operation: Replace
+Replacement: {WorkflowVariable:varFeedbackLink}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[ScreeningMember\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCurrentMemberName}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[Supervisor\]
+Operation: Replace
+Replacement: {WorkflowVariable:varSupervisor}
+Store in: varEmailBody
+
+Action: Send Email
+To: {WorkflowVariable:varCurrentMember}
+CC: {Current Item:Supervisor}
+Subject: {WorkflowVariable:varEmailSubject}
+Body: {WorkflowVariable:varEmailBody}
+
+Action: Pause for 2 seconds
+
+Action: Log to History List
+Message: "Feedback request sent to " + {WorkflowVariable:varCurrentMemberName}
+
+──── End Loop ────
+15. Log Completion
+Action: Log to History List
+Message: "WORKFLOW COMPLETE: Feedback requests sent to " + {WorkflowVariable:varExpectedFeedbackCount} + " recipients for Case " + {WorkflowVariable:varCaseID}
+Workflow 3: Feedback Manager
+Basic Settings
+Location: Feedback Submissions List
+Name: Feedback Manager
+Description: Counts feedback, updates case status, handles additional requests
+Start Options
+❌ Allow manual start
+✅ Start when items are created
+✅ Start when items are modified
+❌ Start on a schedule
+Workflow Variables
+varCaseID - Single line of text
+varCaseItemID - Number
+varExpectedFeedbackCount - Number
+varCurrentFeedbackCount - Number
+varCurrentMember - Single line of text
+varSupervisor - Single line of text
+varOriginalFeedback - Multiple lines of text
+varTemplateSubject - Single line of text
+varTemplateBody - Multiple lines of text
+varEmailSubject - Single line of text
+varEmailBody - Multiple lines of text
+varAdditionalRequested - Yes/No
+varAlreadySentAdditional - Number
+
+colCaseReview - Collection
+colFeedbackCount - Collection
+colEmailTemplate - Collection
+Workflow Actions
+1. Log Start
+Action: Log to History List
+Message: "WORKFLOW START: Processing feedback submission ID " + {Current Item:ID}
+2. Get Case ID
+Action: Set Variable
+varCaseID = {Current Item:Case ID:Case ID}
+
+Note: Syntax may vary. Try:
+- {Current Item:Case ID:Value}
+- {Current Item:Case ID}
+3. Query Case Review Item
+Action: Query List
+List: Case Review
+Filter: Case ID equals {WorkflowVariable:varCaseID}
+Number of items: 1
+Store in: colCaseReview
+
+Action: For Each
+Collection: colCaseReview
+Store current in: currentCase
+Actions:
+  Set Variable: varCaseItemID = {Variable:currentCase:ID}
+  Set Variable: varExpectedFeedbackCount = {Variable:currentCase:Expected Feedback Count}
+4. Count Submitted Feedback
+Action: Query List
+List: Feedback Submissions
+Filter:
+  Case ID equals {WorkflowVariable:varCaseID}
+  AND Submission Status equals "Submitted"
+Number of items: 1000
+Store count in: varCurrentFeedbackCount
+5. Update Case Feedback Count
+Action: Update Item
+List: Case Review
+Item ID: {WorkflowVariable:varCaseItemID}
+Fields:
+  Feedback Count = {WorkflowVariable:varCurrentFeedbackCount}
+6. Check if All Feedback Received
+Action: Run If
+Condition: {WorkflowVariable:varCurrentFeedbackCount} >= {WorkflowVariable:varExpectedFeedbackCount}
+Then:
+
+  Action: Update Item
+  List: Case Review
+  Item ID: {WorkflowVariable:varCaseItemID}
+  Fields:
+    All Feedback Received = Yes
+    Case Status = Feedback Received
+
+  Action: Log to History List
+  Message: "All feedback received for Case " + {WorkflowVariable:varCaseID} + ". Status updated to 'Feedback Received'."
+7. Handle Additional Feedback Request
+Action: Set Variable
+varAdditionalRequested = {Current Item:Additional Feedback Requested}
+
+Action: Run If
+Condition: {WorkflowVariable:varAdditionalRequested} equals Yes
+Then:
+
+  ──── Check if already sent (prevent duplicates) ────
+  
+  Action: Query List
+  List: Workflow History
+  Filter:
+    List ID equals {Current Item:ID}
+    AND Workflow Name contains "Feedback Manager"
+    AND Description contains "Additional feedback email sent"
+    AND Created > {Common:Today} - 1 day
+  Number of items: 1
+  Store count in: varAlreadySentAdditional
+
+  Action: Run If
+  Condition: varAlreadySentAdditional equals 0
+  Then:
+
+    Action: Set Variable
+    varCurrentMember = {Current Item:Screening Team Member:DisplayName}
+
+    Action: Set Variable
+    varSupervisor = {Current Item:Supervisor:DisplayName}
+
+    Action: Set Variable
+    varOriginalFeedback = {Current Item:Feedback Text}
+
+    Action: Query List
+    List: Email Templates
+    Filter:
+      Template Type equals "Additional Feedback Request"
+      AND Active equals Yes
+    Number of items: 1
+    Store in: colEmailTemplate
+
+    Action: For Each
+    Collection: colEmailTemplate
+    Store current in: currentTemplate
+    Actions:
+      Set Variable: varTemplateSubject = {Variable:currentTemplate:Email Subject}
+      Set Variable: varTemplateBody = {Variable:currentTemplate:Email Body}
+
+    [Replace tokens in subject]
+    Action: Regular Expression
+    Pattern: {WorkflowVariable:varTemplateSubject}
+    Regular expression: \[CaseID\]
+    Operation: Replace
+    Replacement: {WorkflowVariable:varCaseID}
+    Store in: varEmailSubject
+
+    [Replace tokens in body]
+    Action: Regular Expression
+    Pattern: {WorkflowVariable:varTemplateBody}
+    Regular expression: \[CaseID\]
+    Operation: Replace
+    Replacement: {WorkflowVariable:varCaseID}
+    Store in: varEmailBody
+
+    Action: Regular Expression
+    Pattern: {WorkflowVariable:varEmailBody}
+    Regular expression: \[ScreeningMember\]
+    Operation: Replace
+    Replacement: {WorkflowVariable:varCurrentMember}
+    Store in: varEmailBody
+
+    Action: Regular Expression
+    Pattern: {WorkflowVariable:varEmailBody}
+    Regular expression: \[FeedbackContent\]
+    Operation: Replace
+    Replacement: {WorkflowVariable:varOriginalFeedback}
+    Store in: varEmailBody
+
+    Action: Send Email
+    To: {Current Item:Screening Team Member}
+    CC: {Current Item:Supervisor}
+    Subject: {WorkflowVariable:varEmailSubject}
+    Body: {WorkflowVariable:varEmailBody}
+
+    Action: Log to History List
+    Message: "Additional feedback email sent to " + {WorkflowVariable:varCurrentMember} + " for Case " + {WorkflowVariable:varCaseID}
+8. Log Completion
+Action: Log to History List
+Message: "WORKFLOW COMPLETE: Feedback processed. Case " + {WorkflowVariable:varCaseID} + " now has " + {WorkflowVariable:varCurrentFeedbackCount} + " of " + {WorkflowVariable:varExpectedFeedbackCount} + " expected feedback items."
+Workflow 4: Compile & Distribute
+Basic Settings
+Location: Case Review List
+Name: Compile and Distribute Feedback
+Description: Compiles feedback and sends individual emails when complete
+Start Options
+✅ Allow manual start
+❌ Start when items are created
+✅ Start when items are modified
+❌ Start on a schedule
+Workflow Variables
+varCaseID - Single line of text
+varCaseName - Single line of text
+varCurrentItemID - Number
+varCompiledFeedback - Multiple lines of text
+varCurrentMemberName - Single line of text
+varCurrentSupervisorName - Single line of text
+varCurrentFeedbackText - Multiple lines of text
+varCurrentSubmissionDate - Single line of text
+varCurrentFeedbackID - Number
+varTemplateSubject - Single line of text
+varTemplateBody - Multiple lines of text
+varEmailSubject - Single line of text
+varEmailBody - Multiple lines of text
+varFeedbackItemCount - Number
+varAlreadyRan - Number
+
+colFeedback - Collection
+colEmailTemplate - Collection
+currentFeedback - Object
+Workflow Actions
+1. Check if Already Ran
+Action: Query List
+List: Workflow History
+Filter:
+  List ID equals {Current Item:ID}
+  AND Workflow Name contains "Compile and Distribute"
+  AND Created > {Common:Today} - 1 day
+  AND Description contains "WORKFLOW COMPLETE"
+Number of items: 1
+Store count in: varAlreadyRan
+
+Action: Run If
+Condition: varAlreadyRan > 0
+Then:
+  Action: Log to History List
+  Message: "Workflow already ran today. Terminating."
+  
+  Action: Terminate Workflow
+2. Check Prerequisites
+Action: Run If
+Condition: {Current Item:All Feedback Received} is not equal to Yes
+Then:
+  Action: Log to History List
+  Message: "Not all feedback received yet. Workflow terminated."
+  
+  Action: Terminate Workflow
+
+Action: Run If
+Condition: {Current Item:Case Status} is not equal to "Feedback Received"
+Then:
+  Action: Log to History List
+  Message: "Case status is not 'Feedback Received'. Workflow terminated."
+  
+  Action: Terminate Workflow
+3. Log Start
+Action: Log to History List
+Message: "WORKFLOW START: Compiling and distributing feedback for Case " + {Current Item:Case ID}
+4. Set Core Variables
+Action: Set Variable
+varCurrentItemID = {Current Item:ID}
+
+Action: Set Variable
+varCaseID = {Current Item:Case ID}
+
+Action: Set Variable
+varCaseName = {Current Item:Case Name}
+5. Query All Feedback
+Action: Query List
+List: Feedback Submissions
+Filter:
+  Case ID equals {WorkflowVariable:varCaseID}
+  AND Submission Status equals "Submitted"
+Order by: Screening Team Member (ascending)
+Number of items: 1000
+Store in: colFeedback
+
+Action: Count Items in Collection
+Collection: colFeedback
+Store in: varFeedbackItemCount
+6. Build Compiled Feedback Header
+Action: Build String
+Store in: varCompiledFeedback
+
+Pattern:
+═══════════════════════════════════════════════════════════
+ COMPILED FEEDBACK REPORT
+═══════════════════════════════════════════════════════════
+
+Case ID: {WorkflowVariable:varCaseID}
+Case Name: {WorkflowVariable:varCaseName}
+Compilation Date: {Common:Today}
+Total Feedback Items: {WorkflowVariable:varFeedbackItemCount}
+
+═══════════════════════════════════════════════════════════
+7. Loop Through Feedback to Build Compilation
+Action: For Each
+Collection: colFeedback
+Store current in: currentFeedback
+
+──── Actions Inside Loop ────
+
+Action: Set Variable
+varCurrentMemberName = {Variable:currentFeedback:Screening Team Member:DisplayName}
+
+Action: Set Variable
+varCurrentSupervisorName = {Variable:currentFeedback:Supervisor:DisplayName}
+
+Action: Set Variable
+varCurrentFeedbackText = {Variable:currentFeedback:Feedback Text}
+
+Action: Set Variable
+varCurrentSubmissionDate = fn-FormatDate({Variable:currentFeedback:Date Submitted},"MM/dd/yyyy HH:mm")
+
+Action: Build String
+Store in: varCompiledFeedback
+
+Pattern: {WorkflowVariable:varCompiledFeedback}
+───────────────────────────────────────────────
+FEEDBACK FROM: {WorkflowVariable:varCurrentMemberName}
+SUPERVISOR: {WorkflowVariable:varCurrentSupervisorName}
+SUBMITTED: {WorkflowVariable:varCurrentSubmissionDate}
+───────────────────────────────────────────────
+
+{WorkflowVariable:varCurrentFeedbackText}
+
+
+──── End Loop ────
+8. Add Footer to Compilation
+Action: Build String
+Store in: varCompiledFeedback
+
+Pattern: {WorkflowVariable:varCompiledFeedback}
+═══════════════════════════════════════════════════════════
+ END OF COMPILED FEEDBACK REPORT
+═══════════════════════════════════════════════════════════
+9. Save Compiled Feedback
+Action: Update Item
+List: Case Review
+Item ID: {WorkflowVariable:varCurrentItemID}
+Fields:
+  Review Meeting Notes = {WorkflowVariable:varCompiledFeedback}
+  Feedback Compiled Date = {Common:Today}
+  Case Status = Feedback Compiled
+10. Get Email Template
+Action: Query List
+List: Email Templates
+Filter:
+  Template Type equals "Individual Feedback Delivery"
+  AND Active equals Yes
+Number of items: 1
+Store in: colEmailTemplate
+
+Action: For Each
+Collection: colEmailTemplate
+Store current in: currentTemplate
+Actions:
+  Set Variable: varTemplateSubject = {Variable:currentTemplate:Email Subject}
+  Set Variable: varTemplateBody = {Variable:currentTemplate:Email Body}
+11. Loop Through Feedback to Send Individual Emails
+Action: For Each
+Collection: colFeedback
+Store current in: currentFeedback
+
+──── Actions Inside Loop ────
+
+Action: Set Variable
+varCurrentFeedbackID = {Variable:currentFeedback:ID}
+
+Action: Set Variable
+varCurrentMemberName = {Variable:currentFeedback:Screening Team Member:DisplayName}
+
+Action: Set Variable
+varCurrentSupervisorName = {Variable:currentFeedback:Supervisor:DisplayName}
+
+Action: Set Variable
+varCurrentFeedbackText = {Variable:currentFeedback:Feedback Text}
+
+[Replace tokens in subject]
+Action: Regular Expression
+Pattern: {WorkflowVariable:varTemplateSubject}
+Regular expression: \[CaseID\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseID}
+Store in: varEmailSubject
+
+[Replace tokens in body]
+Action: Regular Expression
+Pattern: {WorkflowVariable:varTemplateBody}
+Regular expression: \[ScreeningMember\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCurrentMemberName}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[CaseID\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseID}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[CaseName\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCaseName}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[Supervisor\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCurrentSupervisorName}
+Store in: varEmailBody
+
+Action: Regular Expression
+Pattern: {WorkflowVariable:varEmailBody}
+Regular expression: \[FeedbackContent\]
+Operation: Replace
+Replacement: {WorkflowVariable:varCurrentFeedbackText}
+Store in: varEmailBody
+
+Action: Send Email
+To: {Variable:currentFeedback:Screening Team Member}
+CC: {Variable:currentFeedback:Supervisor}
+Subject: {WorkflowVariable:varEmailSubject}
+Body: {WorkflowVariable:varEmailBody}
+
+Action: Update Item
+List: Feedback Submissions
+Item ID: {WorkflowVariable:varCurrentFeedbackID}
+Fields:
+  Submission Status = Sent to Member
+
+Action: Pause for 2 seconds
+
+Action: Log to History List
+Message: "Individual feedback sent to " + {WorkflowVariable:varCurrentMemberName}
+
+──── End Loop ────
+12. Update Final Case Status
+Action: Update Item
+List: Case Review
+Item ID: {WorkflowVariable:varCurrentItemID}
+Fields:
+  Case Status = Feedback Sent
+13. Log Completion
+Action: Log to History List
+Message: "WORKFLOW COMPLETE: Feedback compiled and distributed for Case " + {WorkflowVariable:varCaseID} + ". Total feedback items: " + {WorkflowVariable:varFeedbackItemCount}
+Testing Procedures
+Test Case 1: New Case Creation
+Steps
+Navigate to Case Review list
+Click New Item
+Fill in all required fields:
+Case ID: TEST-001
+Case Name: Test Case Alpha
+Date Identified: Today
+Source: Workgroup Selection
+Assigned Workgroup: [Select test users]
+Screening Team Members: [Select 2-3 test users]
+Intake Service Team Contact: [Select test user]
+Supervisor: [Select test user]
+Review Meeting Date: [Future date]
+Click Save
+Expected Results
+✅ Workflow 1 starts automatically
+✅ Folder "Case_TEST-001" created in Case Documents
+✅ Documents Link field populated
+✅ Case Status = "Documents Uploaded"
+✅ Assignment email sent to workgroup
+✅ All tokens in email replaced correctly
+Verification Checklist
+□ Folder exists in Case Documents library
+□ Folder name matches: Case_TEST-001
+□ Documents Link opens folder correctly
+□ Case Status updated
+□ Email received by workgroup members
+□ Email subject correct
+□ Email body has no unreplaced tokens
+□ Documents link in email works
+□ Workflow history shows success
+□ No errors in workflow log
+Test Case 2: Request Feedback
+Steps
+Open TEST-001 case
+Click Edit Item
+Change Case Status to: "Awaiting Feedback"
+Click Save
+Expected Results
+✅ Workflow 2 starts automatically
+✅ Expected Feedback Count calculated correctly
+✅ Email sent to Intake Contact
+✅ Email sent to each Screening Member
+✅ Supervisor CC'd on screening member emails
+✅ Feedback links work
+Verification Checklist
+□ Expected Feedback Count = [# members + 1]
+□ Intake contact received email
+□ Each screening member received email
+□ Emails are personalized with member names
+□ Supervisor CC'd on member emails
+□ Feedback link opens NewForm
+□ Case ID visible/pre-populated in form
+□ Workflow completed successfully
+□ Log shows email count matches expected
+Test Case 3: Submit Feedback
+Steps
+Navigate to Feedback Submissions list
+Click New Item for each required person
+Fill in:
+Case ID: TEST-001
+Screening Team Member: [Select member]
+Supervisor: [Select supervisor]
+Feedback Text: [Enter test feedback]
+Submission Status: Submitted
+Date Submitted: Today
+Click Save
+Repeat for all expected feedback items
+Expected Results
+✅ Workflow 3 runs after each submission
+✅ Feedback Count increments
+✅ After final submission: All Feedback Received = Yes
+✅ Case Status changes to "Feedback Received"
+Verification Checklist
+After 1st submission:
+□ Feedback Count = 1
+□ All Feedback Received = No
+□ Case Status unchanged
+
+After each subsequent submission:
+□ Feedback Count increments correctly
+□ Still waiting for remaining feedback
+
+After final submission:
+□ Feedback Count = Expected Count
+□ All Feedback Received = Yes
+□ Case Status = "Feedback Received"
+□ Workflow history shows auto-update
+Test Case 4: Compile and Distribute
+Steps
+Open TEST-001 case (All Feedback Received = Yes)
+Manually start "Compile and Distribute Feedback" workflow
+OR wait for automatic trigger
+Expected Results
+✅ Workflow 4 starts
+✅ All feedback compiled into document
+✅ Compilation saved to Review Meeting Notes
+✅ Individual emails sent to each submitter
+✅ Each email contains only their feedback
+✅ Supervisor CC'd
+✅ Feedback items updated to "Sent to Member"
+✅ Case Status = "Feedback Sent"
+Verification Checklist
+Compiled Feedback:
+□ Review Meeting Notes field populated
+□ Header contains case details
+□ All feedback items present
+□ Each item shows:
+  □ Member name
+  □ Supervisor name
+  □ Submission date
+  □ Feedback text
+□ Footer present
+
+Case Fields:
+□ Feedback Compiled Date = today
+□ Case Status = "Feedback Sent"
+
+Individual Emails:
+□ Each member received email
+□ Each email contains only their feedback
+□ No one sees others' feedback
+□ Supervisor CC'd on each
+□ Formatting correct
+
+Feedback Submissions:
+□ All items status = "Sent to Member"
+□ No items left as "Submitted"
+
+Workflow:
+□ Completed successfully
+□ Log shows emails sent
+□ No errors
+Test Case 5: Additional Feedback Request
+Steps
+Navigate to Feedback Submissions list
+Open one TEST-001 feedback item
+Click Edit Item
+Change "Additional Feedback Requested" to: Yes
+Click Save
+Expected Results
+✅ Workflow 3 triggers
+✅ Additional feedback email sent
+✅ Email sent to submitter
+✅ Supervisor CC'd
+✅ Email contains original feedback
+Verification Checklist
+□ Additional feedback email received
+□ Subject mentions case ID
+□ Body includes original feedback
+□ Supervisor CC'd
+□ Workflow history shows email sent
+□ Workflow doesn't send duplicates if edited again
+□ Log message: "Additional feedback email sent"
+Test Case 6: Error Scenarios
+Test 6A: Missing Required Field
+Steps:
+1. Try to create case without Case Name
+2. Click Save
+
+Expected:
+□ SharePoint shows validation error
+□ Save prevented
+Test 6B: Folder Already Exists
+Steps:
+1. Manually create "Case_TEST-002" folder
+2. Create case with ID "TEST-002"
+3. Save
+
+Expected:
+□ Workflow attempts creation
+□ REST API may error (check logs)
+□ Documents Link still populated
+□ Workflow continues
+Test 6C: Invalid Email
+Steps:
+1. Create case with test user without email
+2. Trigger feedback request
+
+Expected:
+□ Workflow attempts send
+□ Error logged for invalid address
+□ Other emails still sent
+□ Workflow completes with warnings
+Troubleshooting Guide
+Issue 1: Folder Not Created
+Symptoms
+Workflow completes but no folder
+Documents Link empty
+REST API error in history
+Solutions
+Get Correct Metadata Type:
+1. Open browser
+2. Go to: [SiteURL]/_api/web/lists/getbytitle('Case Documents')?$select=ListItemEntityTypeFullName
+3. Copy exact ListItemEntityTypeFullName value
+4. Update workflow REST call with this value
+5. Republish workflow
+Check Permissions:
+1. Case Documents library → Settings → Permissions
+2. Verify workflow account has Contribute
+3. If using app-only, check app permissions
+Alternative: Manual Folder Creation:
+Skip REST API, use Update Item to set link:
+varDocumentsLink = varSiteURL + "/Case Documents/" + varFolderName
+Issue 2: Emails Not Sending
+Symptoms
+Workflow completes
+No emails received
+No errors shown
+Solutions
+Check Outgoing Email:
+1. Central Admin → System Settings
+2. Configure outgoing e-mail settings
+3. Verify SMTP server configured
+4. Test with simple email from SharePoint
+Add Logging:
+Before Send Email action:
+Action: Log to History List
+Message: "Sending to: " + {Current Item:Assigned Workgroup:Email}
+
+Check logs to verify email addresses
+Check Spam Folders:
+1. Check all recipient spam/junk folders
+2. Verify sender not blacklisted
+3. Add SharePoint domain to safe senders
+Increase Pause:
+If throttled, change:
+Action: Pause for 5 seconds (instead of 2)
+Issue 3: Token Replacement Not Working
+Symptoms
+Emails contain [CaseID] instead of values
+Templates show tokens
+Solutions
+Check Regex Syntax:
+Correct: \[CaseID\]
+Wrong: [CaseID]
+
+Backslashes escape brackets
+Add Logging:
+Before replacement:
+Action: Log to History List
+Message: "Case ID value: " + varCaseID
+
+If empty, variable not set
+Use Separate Actions:
+Don't replace all in one regex
+Use one action per token:
+- Action 1: Replace [CaseID]
+- Action 2: Replace [CaseName]
+- Action 3: Replace [DocumentsLink]
+Verify Template:
+1. Open Email Templates list
+2. Check exact spelling: [CaseID]
+3. Not [Case ID] or [CASEID]
+Issue 4: Workflow Loops
+Symptoms
+Workflow runs multiple times
+Duplicate emails sent
+Repeated executions in history
+Solutions
+Add Loop Prevention:
+At workflow start:
+Action: Query List
+List: Workflow History
+Filter:
+  List ID = Current Item:ID
+  Workflow Name contains "[Name]"
+  Created > Today - 1 day
+  Description contains "WORKFLOW COMPLETE"
+Store count in: varAlreadyRan
+
+Action: Run If
+Condition: varAlreadyRan > 0
+Then: Terminate Workflow
+Use Tracking Column:
+Add: "Last Feedback Request Date"
+
+In workflow:
+If date not empty AND < 7 days ago
+Then: Terminate
+Check Update Actions:
+Ensure Update Item doesn't trigger itself:
+- Update fields that don't trigger workflow
+- Or use "without triggering workflows" if available
+Issue 5: Feedback Count Not Updating
+Symptoms
+Count stays at 0
+All Feedback Received never becomes Yes
+Feedback visible but not counted
+Solutions
+Check Lookup Column:
+In Feedback Submissions:
+1. Verify Case ID is Lookup type
+2. Points to Case Review list
+3. Gets Case ID column (not Title or ID)
+
+Recreate if needed
+Check Query Filter:
+Add logging:
+Action: Log to History List
+Message: "Querying Case ID: " + varCaseID + ", Found: " + varCurrentFeedbackCount
+
+Verify query returns expected results
+Verify Status:
+Ensure feedback items have:
+Submission Status = "Submitted"
+
+Not "Draft" or other values
+Issue 6: Compiled Feedback Empty
+Symptoms
+Review Meeting Notes empty
+Formatting broken
+Only header/footer, no content
+Solutions
+Check Collection:
+After query:
+Action: Count Items in Collection
+Store in: varFeedbackItemCount
+
+Action: Log to History List
+Message: "Found " + varFeedbackItemCount + " items"
+
+If 0, query is wrong
+Verify Loop Executes:
+Inside For Each:
+Action: Log to History List
+Message: "Processing feedback from " + currentFeedback:Member
+
+Check logs to see if loop runs
+Handle HTML:
+If feedback has HTML:
+
+Action: Regular Expression
+Pattern: varCurrentFeedbackText
+Regular expression: <[^>]*>
+Operation: Replace
+Replacement: (empty)
+Store in: varCurrentFeedbackText
+
+This strips HTML tags
+Issue 7: REST API 403 Forbidden
+Symptoms
+Folder creation fails
+Error: "403 Forbidden"
+REST call failed in history
+Solutions
+Check Account Permissions:
+1. Verify workflow account
+2. Check Contribute or higher on library
+3. Test by logging in as that account
+Add Request Digest:
+Some configurations require:
+
+Header: X-RequestDigest
+Value: [Get from /_api/contextinfo call]
+Check App Permissions:
+If app-only auth:
+1. Go to /_layouts/15/appinv.aspx
+2. Verify app permissions include Write
+Issue 8: Person Field Not Resolving
+Symptoms
+varCurrentMember empty
+Screening Team Members returns nothing
+Emails not sent (To: field empty)
+Solutions
+Try Different Syntax:
+Option 1: {Current Item:Screening Team Members}
+Option 2: {Current Item:Screening Team Members:DisplayName}
+Option 3: {Current Item:Screening Team Members:Email}
+
+Try each to find what works
+Handle Multi-Select:
+Must use For Each for multi-select person fields:
+
+Action: For Each
+Collection: {Current Item:Screening Team Members}
+Store in: varCurrentMember
+  Now use: varCurrentMember:DisplayName
+Add Logging:
+Action: Log to History List
+Message: "Members: " + {Current Item:Screening Team Members}
+
+Check what gets logged
+Issue 9: Workflow Suspended/Error
+Symptoms
+Status shows "Suspended"
+History shows "An error has occurred"
+Red X icon
+Solutions
+Check History Details:
+1. Open workflow history
+2. Find last successful action
+3. Note error message
+
+Common errors:
+- "Coercion Failed" → wrong data type
+- "Object reference not set" → null value
+- "Index out of range" → empty collection
+- "Item does not exist" → wrong ID
+Add Error Handling:
+Before risky actions:
+
+Action: Count Items in Collection
+Store in: count
+
+Action: Run If
+Condition: count > 0
+Then: [Get item from collection]
+Else: [Log error and skip]
+Validate Variables:
+Action: Run If
+Condition: varCaseID is not empty
+Then: [Continue]
+Else:
+  Log error
+  Terminate
+Increase Timeout:
+REST calls:
+Advanced Settings → Request timeout: 120 seconds
+Maintenance Schedule
+Daily Checks
+□ Check for suspended workflows
+□ Review workflow health dashboard
+□ Verify recent emails delivered
+□ Confirm new folders created
+□ Address any error notifications
+Weekly Tasks
+□ Review workflow performance metrics
+□ Check average execution times
+□ Look for recurring errors
+□ Test end-to-end with test case
+□ Update documentation if needed
+Monthly Maintenance
+□ Archive old workflow history (>90 days)
+□ Review and update email templates
+□ Test all token replacements
+□ Optimize slow-running workflows
+□ Check list size and performance
+□ Review user feedback
+□ Update training materials
+Quarterly Review
+□ Full system audit
+□ Performance optimization
+□ Security review
+□ User satisfaction survey
+□ Process improvement assessment
+□ Documentation update
+Success Metrics
+Key Performance Indicators
+Process Efficiency:
+Average time: Case creation → Feedback sent
+Feedback submission rate (% expected vs actual)
+Workflow success rate (completed vs failed)
+Average feedback items per case
+System Health:
+Workflow error rate
+Email delivery success rate
+Folder creation success rate
+Average workflow execution time
+User Adoption:
+Number of active cases per month
+User satisfaction scores
+Training completion rate
+Support tickets per month
+Quick Reference
+Workflow Trigger Summary
+Workflow
+List
+Trigger
+Conditions
+Case Initialization
+Case Review
+Item Created
+None
+Request Feedback
+Case Review
+Item Modified
+Status = "Awaiting Feedback"
+Feedback Manager
+Feedback Submissions
+Item Created/Modified
+None
+Compile & Distribute
+Case Review
+Item Modified
+All Feedback Received = Yes
+Status Flow
+New
+  ↓ (Workflow 1)
+Documents Uploaded
+  ↓ (Manual change)
+Awaiting Feedback
+  ↓ (Workflow 2 sends requests)
+[Team submits feedback]
+  ↓ (Workflow 3 detects completion)
+Feedback Received
+  ↓ (Workflow 4 compiles)
+Feedback Compiled
+  ↓ (Workflow 4 distributes)
+Feedback Sent
+  ↓ (Manual)
+Completed
+Common Admin Tasks
+Deactivate a template:
+1. Email Templates list
+2. Edit template
+3. Set Active = No
+4. Save
+Recount feedback manually:
+1. Open case in Case Review
+2. Workflows → Start workflow manually
+3. Select "Compile and Distribute Feedback"
+4. (Will recount as part of process)
+Reset a stuck case:
+1. Edit case item
+2. Set All Feedback Received = No
+3. Set Feedback Count = 0
+4. Set Status = "Awaiting Feedback"
+5. Save
+Export workflow for backup:
+1. Open workflow in Nintex Designer
+2. Ribbon → Export
+3. Save .nwf file
+4. Store
+securely with documentation
+---
+
+# Support Contacts
+
+**Workflow Administrator:** [Name/Email]  
+**SharePoint Administrator:** [Name/Email]  
+**Business Process Owner:** [Name/Email]  
+**IT Support:** [Name/Email]
+
+---
+
+# Version History
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0 | [Date] | [Your Name] | Initial configuration |
+
+---
+
+**END OF CONFIGURATION GUIDE**
+
+This document provides complete step-by-step instructions for implementing the Case Review workflow system. Save this document for reference during implementation and ongoing maintenance.
